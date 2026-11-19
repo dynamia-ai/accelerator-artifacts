@@ -1,0 +1,56 @@
+name: Public checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check locks and recipes
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version-file: .python-version
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.9"
+          cache-dependency-glob: uv.lock
+      - name: Check Python
+        run: |
+          uv run --locked ruff check scripts tests
+          uv run --locked ruff format --check scripts tests
+          uv run --locked python -m unittest discover -s tests -v
+      - name: Validate metadata and recipe
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.head_ref }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          bash -n vendors/cambricon/device-plugin/build.sh
+          args=()
+          if [[ -n "$PR_BASE_SHA" ]]; then
+            args+=(--base "$PR_BASE_SHA")
+            if [[ "$PR_HEAD_REPO" == dynamia-ai/accelerator-artifacts && "$PR_HEAD" == upstream/* ]]; then
+              args+=(--automatic-head "$PR_HEAD")
+            fi
+          fi
+          uv run --locked python scripts/upstream.py check "${args[@]}"
+      - name: Run Dockerfile build checks with a public-only context
+        run: |
+          context="$(mktemp -d "$RUNNER_TEMP/cambricon-dockerfile.XXXXXX")"
+          mkdir -p "$context/source/pkg/cndev/include" "$context/licenses"
+          touch "$context/source/pkg/cndev/include/.keep" "$context/licenses/.keep"
+          docker buildx build --check --platform linux/amd64 \
+            --file vendors/cambricon/device-plugin/Dockerfile "$context"
