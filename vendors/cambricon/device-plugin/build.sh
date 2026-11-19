@@ -5,9 +5,19 @@ umask 077
 recipe="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 root="$(cd "$recipe/../../.." && pwd -P)"
 mode="${1:---build}"
-if [[ "$#" -gt 1 || ( "$mode" != --build && "$mode" != --check-inputs ) ]]; then
-    echo 'Usage: build.sh [--check-inputs|--build]' >&2
+if [[ "$#" -gt 1 || ( "$mode" != --build && "$mode" != --check-inputs && "$mode" != --check-public ) ]]; then
+    echo 'Usage: build.sh [--check-public|--check-inputs|--build]' >&2
     exit 2
+fi
+
+platform="$(cat "$recipe/platform")"
+if [[ "$mode" == --check-public ]]; then
+    context="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/cambricon-dockerfile.XXXXXX")"
+    trap 'rm -rf -- "$context"' EXIT
+    mkdir -p "$context/source/pkg/cndev/include" "$context/licenses"
+    touch "$context/source/pkg/cndev/include/.keep" "$context/licenses/.keep"
+    docker buildx build --check --platform "$platform" --file "$recipe/Dockerfile" "$context"
+    exit 0
 fi
 
 if [[ "$mode" == --build && ( "${CAMBRICON_AUTHORIZED_BUILD:-}" != 1 || "${GITHUB_ACTIONS:-}" == true ) ]]; then
@@ -106,7 +116,7 @@ cp "$recipe/Dockerfile" "$scratch/context/Dockerfile"
 # BuildKit may retain intermediate state even when cache reuse is disabled.
 builder_name="cambricon-${scratch##*.}-$$"
 builder="$(docker buildx create --name "$builder_name" --driver docker-container)"
-if ! docker buildx build --builder "$builder" --platform linux/amd64 --no-cache \
+if ! docker buildx build --builder "$builder" --platform "$platform" --no-cache \
     --provenance=false --sbom=false --load --tag "$image" --build-arg "VERSION=$tag" \
     --label "org.opencontainers.image.revision=$commit" \
     --secret "id=cndev_header,src=$CAMBRICON_CNDEV_HEADER" \
@@ -117,12 +127,12 @@ if ! docker buildx build --builder "$builder" --platform linux/amd64 --no-cache 
     exit 1
 fi
 
-expected='linux/amd64 ["/usr/bin/k8s-device-plugin"]'
+expected="$platform "'["/usr/bin/k8s-device-plugin"]'
 if [[ "$(docker image inspect --format '{{.Os}}/{{.Architecture}} {{json .Config.Cmd}}' "$image")" != "$expected" ]]; then
     echo 'Image platform or startup command did not match the recipe.' >&2
     exit 1
 fi
-container="$(docker create --platform linux/amd64 "$image")"
+container="$(docker create --platform "$platform" "$image")"
 docker export "$container" | tar -tf - > "$scratch/files"
 for file in usr/bin/k8s-device-plugin usr/lib/libcndev.so usr/lib/libcntopo.so; do
     if ! grep -Fxq "$file" "$scratch/files"; then
@@ -130,4 +140,4 @@ for file in usr/bin/k8s-device-plugin usr/lib/libcndev.so usr/lib/libcntopo.so; 
         exit 1
     fi
 done
-echo "Built and checked $image for linux/amd64 in the authorized Docker daemon."
+echo "Built and checked $image for $platform in the authorized Docker daemon."

@@ -18,8 +18,8 @@ uv run --locked ruff check scripts tests
 uv run --locked ruff format --check scripts tests
 uv run --locked python -m unittest discover -s tests -v
 bash -n vendors/cambricon/device-plugin/build.sh
-uv run --locked python scripts/upstream.py check --offline
-uv run --locked python scripts/upstream.py check
+uv run --locked python scripts/check_components.py --offline
+uv run --locked python scripts/check_components.py
 ```
 
-运行 `uv run --locked python scripts/upstream.py poll` 可只读查看有待更新的组件版本。自动创建 PR 和正式发布需要分别启用。[启用和恢复说明](docs/operations.md) · [设计](docs/accelerator-artifacts-design.md) · [贡献规则](CONTRIBUTING.md)
+公开检查按组件目录并行运行。上游版本更新由 Renovate 提 PR。Renovate 接入和正式发布分别启用。[启用和恢复说明](docs/operations.md) · [设计](docs/accelerator-artifacts-design.md) · [贡献规则](CONTRIBUTING.md)

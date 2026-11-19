@@ -1,4 +1,4 @@
-"""Validate the flat upstream.yaml schema and preserve its formatting on updates."""
+"""Discover components and validate their reviewed source locks and build recipes."""
 
 import re
 import subprocess
@@ -14,6 +14,8 @@ GITHUB_REPO = re.compile(
 TAG = re.compile(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
 SHA = re.compile(r"[a-f0-9]{40}")
 FIELDS = {"repository": GITHUB_REPO, "tag": TAG, "commit": SHA}
+PLATFORM = re.compile(r"linux/(amd64|arm64)")
+BUILD_FILES = ("build.sh", "Dockerfile", "platform")
 # The lock format uses a flat YAML mapping with plain or quoted literal strings.
 LINE = re.compile(
     r"""(?P<key>[a-z]+):[ \t]+(?P<value>"[^"]*"|'[^']*'|[^ \t#]+)(?:[ \t]+(?:#.*)?)?"""
@@ -51,7 +53,8 @@ def lock_path(component):
 
 def parse_lock(source):
     fields = {}
-    for line in source.splitlines():
+    positions = []
+    for index, line in enumerate(source.splitlines()):
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         match = LINE.fullmatch(line)
@@ -68,22 +71,12 @@ def parse_lock(source):
         if not FIELDS[key].fullmatch(value) or (key == "repository" and value.endswith(".git")):
             raise Error(f"invalid {key}")
         fields[key] = value
+        positions.append(index)
     if fields.keys() != FIELDS.keys():
         raise Error("repository, tag and commit are required")
+    if tuple(fields) != tuple(FIELDS) or positions[-1] - positions[0] != 2:
+        raise Error("repository, tag and commit must be in order on three consecutive lines")
     return Lock(**fields)
-
-
-def update_lock(source, candidate):
-    previous = parse_lock(source)
-    if previous.repository != candidate.repository or previous.version >= candidate.version:
-        raise Error("lock update must advance the version in the same repository")
-    for field in ("tag", "commit"):
-        pattern = re.compile(rf"^({field}:[ \t]+)(?:\"[^\"]*\"|'[^']*'|[^ \t\r\n#]+)", re.MULTILINE)
-        value = getattr(candidate, field)
-        source = pattern.sub(lambda match, value=value: f'{match[1]}"{value}"', source)
-    if parse_lock(source) != candidate:
-        raise Error("generated lock did not match the candidate")
-    return source
 
 
 def components(root):
@@ -104,12 +97,27 @@ def components(root):
 
 def load_local(root, component):
     path = root / lock_path(component)
+    if any(directory.is_symlink() for directory in path.parents[:3]):
+        raise Error("component directories must not be symlinks")
     if path.is_symlink() or not path.is_file():
         raise Error("upstream.yaml is missing or is not a regular file")
     return parse_lock(path.read_text(encoding="utf-8"))
 
 
-def check_base(root, component, lock, base, automatic_head):
+def build_platform(root, component):
+    directory = (root / lock_path(component)).parent
+    files = [directory / name for name in BUILD_FILES]
+    if not any(path.exists() or path.is_symlink() for path in files):
+        return None
+    if any(path.is_symlink() or not path.is_file() for path in files):
+        raise Error("image recipe requires regular build.sh, Dockerfile and platform files")
+    platform = (directory / "platform").read_text(encoding="utf-8").strip()
+    if not PLATFORM.fullmatch(platform):
+        raise Error("image recipe platform must be linux/amd64 or linux/arm64")
+    return platform
+
+
+def read_base_lock(root, component, base):
     path = lock_path(component)
     listing = subprocess.run(
         ["git", "ls-tree", base, "--", path],
@@ -118,25 +126,14 @@ def check_base(root, component, lock, base, automatic_head):
         capture_output=True,
     )
     if not listing.stdout:
-        if automatic_head:
-            raise Error("automatic updates require an existing lock on main")
-        return
-    previous = parse_lock(
+        return None
+    return parse_lock(
         subprocess.run(
             ["git", "show", f"{base}:{path}"],
             cwd=root,
             check=True,
             capture_output=True,
             text=True,
+            encoding="utf-8",
         ).stdout
     )
-    if lock.repository == previous.repository and lock.version < previous.version:
-        raise Error("version regresses from the base")
-    if automatic_head:
-        branch = f"upstream/{component}/{lock.tag}"
-        if (
-            automatic_head != branch
-            or lock.repository != previous.repository
-            or lock.version <= previous.version
-        ):
-            raise Error("automatic update must advance the same upstream and match its head branch")

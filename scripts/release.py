@@ -9,25 +9,35 @@ import re
 import subprocess
 import sys
 import tempfile
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 from github import GitHub
-from metadata import REPOSITORY, ROOT, SHA, Error, load_local, lock_path
+from metadata import (
+    BUILD_FILES,
+    REPOSITORY,
+    ROOT,
+    SHA,
+    TAG,
+    Error,
+    Lock,
+    build_platform,
+    load_local,
+    lock_path,
+)
 
-COMPONENT = "cambricon/device-plugin"
-PLATFORM = "linux/amd64"
-GHCR_IMAGE = f"ghcr.io/{REPOSITORY}/cambricon-device-plugin"
 WORKFLOW = f"{REPOSITORY}/.github/workflows/release.yml"
 RELEASE_CONTROLS = (
     ".github/workflows/release.yml",
+    ".github/workflows/release-image.yml",
     ".python-version",
     "scripts/github.py",
     "scripts/metadata.py",
     "scripts/release.py",
     "scripts/record_release.py",
 )
-RECIPE_FILES = ("upstream.yaml", "LICENSING.md", "Dockerfile", "build.sh")
+RECIPE_FILES = ("upstream.yaml", "LICENSING.md", "README.md", *BUILD_FILES)
 DIGEST = re.compile(r"sha256:[a-f0-9]{64}")
 IMAGE_REPO = re.compile(r"[a-z0-9][a-z0-9.-]*\.[a-z]+(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)+")
 
@@ -63,8 +73,33 @@ def require_context(env):
     return tag
 
 
-def project_tag(component, upstream_tag):
-    return f"{component.replace('/', '-')}-{upstream_tag}"
+def parse_project_tag(tag):
+    parts = tag.split("/")
+    if len(parts) != 4 or parts[0] != "release" or not TAG.fullmatch(parts[3]):
+        raise Error(
+            "release ref must name a project release tag: release/<vendor>/<component>/vX.Y.Z"
+        )
+    component = "/".join(parts[1:3])
+    lock_path(component)
+    return component, parts[3]
+
+
+@dataclass(frozen=True)
+class ReleaseTarget:
+    component: str
+    tag: str
+    lock: Lock
+    platform: str
+    licensing_sha: str
+    recipe_commit: str
+
+    @property
+    def image(self):
+        return f"ghcr.io/{REPOSITORY}/{self.component}"
+
+    @property
+    def environment(self):
+        return "public-ghcr-" + self.component.replace("/", "--")
 
 
 def licensing_digest(root, component, tag):
@@ -90,7 +125,7 @@ def quiet(args, operation, *, data=None, env=None, timeout=120):
     return result.stdout
 
 
-def verify_evidence(env, scratch, component, lock, license_sha, recipe_commit):
+def verify_evidence(env, scratch, target):
     evidence = required(env, "STAGING_EVIDENCE").encode()
     payload = scratch / "evidence.json"
     signature = scratch / "evidence.sig"
@@ -114,14 +149,14 @@ def verify_evidence(env, scratch, component, lock, license_sha, recipe_commit):
 
     proof = json.loads(evidence)
     expected = {
-        "component": component,
-        "upstream_repository": lock.repository,
-        "upstream_tag": lock.tag,
-        "upstream_commit": lock.commit,
-        "recipe_commit": recipe_commit,
-        "licensing_sha256": license_sha,
+        "component": target.component,
+        "upstream_repository": target.lock.repository,
+        "upstream_tag": target.lock.tag,
+        "upstream_commit": target.lock.commit,
+        "recipe_commit": target.recipe_commit,
+        "licensing_sha256": target.licensing_sha,
         "builder": required(env, "STAGING_BUILDER"),
-        "platform": PLATFORM,
+        "platform": target.platform,
         "source_repository": required(env, "STAGING_IMAGE_REPOSITORY"),
     }
     if set(proof) != expected.keys() | {"digest"} or any(
@@ -167,17 +202,22 @@ def manifest_digest(raw):
     return "sha256:" + hashlib.sha256(raw).hexdigest()
 
 
-def platform_digests(repository, raw, auth, env=None):
-    # The pilot has one runnable manifest. Optional single-entry indexes must agree with its config.
+def platform_digests(repository, raw, auth, platform, env=None):
+    # A single-platform recipe may still be stored as a single-entry manifest index.
+    expected = tuple(platform.split("/"))
     digest = manifest_digest(raw)
     data = json.loads(raw)
     if "manifests" in data:
         entries = data["manifests"]
-        if len(entries) != 1 or (
-            entries[0]["platform"]["os"],
-            entries[0]["platform"]["architecture"],
-        ) != ("linux", "amd64"):
-            raise Error("image index does not contain exactly one linux/amd64 image")
+        if (
+            len(entries) != 1
+            or (
+                entries[0]["platform"]["os"],
+                entries[0]["platform"]["architecture"],
+            )
+            != expected
+        ):
+            raise Error(f"image index does not contain exactly one {platform} image")
         digest = entries[0]["digest"]
         if not DIGEST.fullmatch(digest):
             raise Error("invalid platform manifest digest")
@@ -198,12 +238,14 @@ def platform_digests(repository, raw, auth, env=None):
             env=env,
         )
     )
-    if (config["os"], config["architecture"]) != ("linux", "amd64"):
-        raise Error("image config does not match the pilot platform")
-    return [{"platform": PLATFORM, "manifest_digest": digest}]
+    if (config["os"], config["architecture"]) != expected:
+        raise Error("image config does not match the recipe platform")
+    return [{"platform": platform, "manifest_digest": digest}]
 
 
-def transfer(source, destination, tag, digest, source_auth, destination_auth, scratch, pre_write):
+def transfer(
+    source, destination, tag, digest, source_auth, destination_auth, scratch, pre_write, *, platform
+):
     env = {
         "PATH": os.environ["PATH"],
         "HOME": str(scratch),
@@ -214,7 +256,7 @@ def transfer(source, destination, tag, digest, source_auth, destination_auth, sc
     raw = raw_manifest(f"{source}@{digest}", source_auth, env=env)
     if manifest_digest(raw) != digest:
         raise Error("staging digest does not match signed evidence")
-    platforms = platform_digests(source, raw, source_auth, env=env)
+    platforms = platform_digests(source, raw, source_auth, platform, env=env)
     target = f"{destination}:{tag}"
     existing = raw_manifest(target, destination_auth, missing_ok=True, env=env)
     if existing is not None and manifest_digest(existing) != digest:
@@ -252,7 +294,7 @@ def transfer(source, destination, tag, digest, source_auth, destination_auth, sc
     destination_raw = raw_manifest(f"{destination}@{digest}", anonymous, env=env)
     if manifest_digest(destination_raw) != digest:
         raise Error("public image manifest does not match its digest")
-    if platform_digests(destination, destination_raw, anonymous, env=env) != platforms:
+    if platform_digests(destination, destination_raw, anonymous, platform, env=env) != platforms:
         raise Error("public image platforms or manifest digests do not match staging")
     # The registry digest is already verified. An OCI scratch layout may convert Docker media types.
     quiet(
@@ -272,15 +314,21 @@ def transfer(source, destination, tag, digest, source_auth, destination_auth, sc
     return platforms
 
 
-def preflight(env, component, root=ROOT):
-    requested_tag = require_context(env)
-    if component != COMPONENT:
-        raise Error("this component has no approved publication recipe")
+def preflight(env, root=ROOT):
+    tag = require_context(env)
+    component, upstream_tag = parse_project_tag(tag)
     lock = load_local(root, component)
+    if upstream_tag != lock.tag:
+        raise Error("release ref must name a project release tag for the upstream lock")
+    platform = build_platform(root, component)
+    if not platform:
+        raise Error("component has no publication recipe")
     license_sha = licensing_digest(root, component, lock.tag)
-    tag = project_tag(component, lock.tag)
-    if requested_tag != tag:
-        raise Error("release ref must name the project release tag for the upstream lock")
+    directory = (root / lock_path(component)).parent
+    for name in RECIPE_FILES:
+        path = directory / name
+        if path.is_symlink() or not path.is_file():
+            raise Error(f"release recipe requires a regular {name} file")
 
     api = GitHub(required(env, "GH_TOKEN"))
     recipe_commit = api.tag_commit(REPOSITORY, tag)
@@ -305,20 +353,23 @@ def preflight(env, component, root=ROOT):
         for path in recipe_paths:
             if api.file_at(path, recipe_commit).encode() != (root / path).read_bytes():
                 raise Error("tagged recipe or licensing differs from current main")
-    return lock, license_sha, recipe_commit
+    return ReleaseTarget(component, tag, lock, platform, license_sha, recipe_commit)
 
 
-def run(env, component, output, root=ROOT):
-    lock, license_sha, recipe_commit = preflight(env, component, root)
-    destination = GHCR_IMAGE
+def run(env, output, root=ROOT):
+    target = preflight(env, root)
+    lock = target.lock
+    destination = target.image
+    if env.get("RELEASE_ENVIRONMENT") != target.environment:
+        raise Error("publication requires the component release environment")
 
     def require_current_release():
-        if preflight(env, component, root) != (lock, license_sha, recipe_commit):
+        if preflight(env, root) != target:
             raise Error("approved release changed before publication")
 
     with tempfile.TemporaryDirectory(prefix="ghcr-release-") as temp:
         scratch = Path(temp)
-        proof = verify_evidence(env, scratch, component, lock, license_sha, recipe_commit)
+        proof = verify_evidence(env, scratch, target)
         if proof["source_repository"] == destination:
             raise Error("staging and public repositories must be distinct")
         source_auth = scratch / "staging-auth.json"
@@ -336,21 +387,22 @@ def run(env, component, output, root=ROOT):
             destination_auth,
             scratch,
             require_current_release,
+            platform=target.platform,
         )
 
-    source_path = lock_path(component).removesuffix("upstream.yaml")
+    source_path = Path(lock_path(target.component)).parent.as_posix()
     record = {
-        "component": component,
+        "component": target.component,
         "upstream_repository": lock.repository,
         "upstream_tag": lock.tag,
         "upstream_commit": lock.commit,
-        "recipe_commit": recipe_commit,
+        "recipe_commit": target.recipe_commit,
         "image": f"{destination}:{lock.tag}",
         "digest": proof["digest"],
         "platforms": platforms,
         "verified_at": datetime.now(UTC).isoformat(),
-        "licensing": f"https://github.com/{REPOSITORY}/blob/{recipe_commit}/{source_path}LICENSING.md",
-        "installation": f"https://github.com/{REPOSITORY}/blob/{recipe_commit}/{source_path}README.md",
+        "licensing": f"https://github.com/{REPOSITORY}/blob/{target.recipe_commit}/{source_path}/LICENSING.md",
+        "installation": f"https://github.com/{REPOSITORY}/blob/{target.recipe_commit}/{source_path}/README.md",
     }
     output.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     print("Public image and anonymous pull verified. Release record saved.")
@@ -358,18 +410,25 @@ def run(env, component, output, root=ROOT):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("component")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--output", type=Path)
     mode.add_argument("--check", action="store_true")
+    parser.add_argument("--github-output", type=Path, help="write routing outputs with --check")
     args = parser.parse_args()
+    if args.github_output and not args.check:
+        parser.error("--github-output requires --check")
     os.umask(0o077)
     try:
         if args.check:
-            preflight(os.environ, args.component)
+            target = preflight(os.environ)
+            if args.github_output:
+                with args.github_output.open("a", encoding="utf-8") as output:
+                    print(f"component={target.component}", file=output)
+                    print(f"release-ref=refs/tags/{target.tag}", file=output)
+                    print(f"environment={target.environment}", file=output)
             print("Project release tag and component licensing are eligible for protected review.")
         else:
-            run(os.environ, args.component, args.output)
+            run(os.environ, args.output)
     except (Error, OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         # Lower-level errors can contain private URLs, registry responses or temporary credentials.
         sys.exit(

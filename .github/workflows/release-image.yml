@@ -1,0 +1,85 @@
+name: Publish one approved image
+on:
+  workflow_call:
+    inputs:
+      release-ref:
+        required: true
+        type: string
+      environment:
+        required: true
+        type: string
+
+permissions: {}
+
+env:
+  RELEASE_REF: ${{ inputs.release-ref }}
+
+jobs:
+  publish:
+    name: Verify private staging and publish to GHCR
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version-file: .python-version
+      - name: Ensure Skopeo is available
+        run: |
+          if ! command -v skopeo >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends skopeo
+          fi
+      - name: Transfer and verify the approved image
+        run: |
+          umask 077
+          record_dir="$(mktemp -d "$RUNNER_TEMP/release-record.XXXXXX")"
+          python3 scripts/release.py --output "$record_dir/release-record.json"
+          echo "path=$record_dir/release-record.json" >> "$GITHUB_OUTPUT"
+        id: record
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLIC_RELEASE_ENABLED: ${{ vars.PUBLIC_RELEASE_ENABLED }}
+          RELEASE_ENVIRONMENT: ${{ inputs.environment }}
+          STAGING_EVIDENCE: ${{ secrets.STAGING_EVIDENCE }}
+          STAGING_SIGNATURE: ${{ secrets.STAGING_SIGNATURE }}
+          STAGING_BUILDER_PUBLIC_KEY: ${{ vars.STAGING_BUILDER_PUBLIC_KEY }}
+          STAGING_BUILDER: ${{ vars.STAGING_BUILDER }}
+          STAGING_IMAGE_REPOSITORY: ${{ secrets.STAGING_IMAGE_REPOSITORY }}
+          STAGING_AUTH: ${{ secrets.STAGING_AUTH }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: public-release-record
+          path: ${{ steps.record.outputs.path }}
+          if-no-files-found: error
+
+  record:
+    name: Attach the public record to GitHub Release
+    needs: publish
+    permissions:
+      contents: write
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version-file: .python-version
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: public-release-record
+          path: ${{ runner.temp }}/public-release-record
+      - run: python3 scripts/record_release.py "$RUNNER_TEMP/public-release-record/release-record.json"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLIC_RELEASE_ENABLED: ${{ vars.PUBLIC_RELEASE_ENABLED }}

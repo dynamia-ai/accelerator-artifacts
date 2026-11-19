@@ -8,31 +8,31 @@ from pathlib import Path
 
 from github import GitHub, run_gh
 from metadata import REPOSITORY, Error
-from release import DIGEST, GHCR_IMAGE, preflight, project_tag, required
+from release import DIGEST, preflight, required
 
 
-def attach(env, component, path):
-    lock, license_sha, recipe = preflight(env, component)
+def attach(env, path):
+    target = preflight(env)
+    lock = target.lock
+    recipe = target.recipe_commit
     token = required(env, "GH_TOKEN")
     api = GitHub(token)
     record = json.loads(path.read_bytes())
     asset_name = "release-record.json"
     if (
         path.name != asset_name
-        or record["component"] != component
+        or record["component"] != target.component
         or record["upstream_repository"] != lock.repository
         or record["upstream_tag"] != lock.tag
         or record["upstream_commit"] != lock.commit
         or record["recipe_commit"] != recipe
-        or record["image"] != f"{GHCR_IMAGE}:{lock.tag}"
+        or record["image"] != f"{target.image}:{lock.tag}"
         or not DIGEST.fullmatch(record["digest"])
     ):
         raise Error("release record does not match the current workflow and reviewed lock")
 
-    tag = project_tag(component, lock.tag)
-    notes = (
-        f"Publication record for {component} {lock.tag} at recipe commit {record['recipe_commit']}."
-    )
+    tag = target.tag
+    notes = f"Publication record for {target.component} {lock.tag} at recipe commit {record['recipe_commit']}."
     repo = ["--repo", REPOSITORY]
 
     def find():
@@ -46,7 +46,7 @@ def attach(env, component, path):
     release = find()
 
     def require_current_release():
-        if preflight(env, component) != (lock, license_sha, recipe):
+        if preflight(env) != target:
             raise Error("approved release changed before recording")
 
     if release is None:
@@ -138,7 +138,7 @@ def attach(env, component, path):
 
 if __name__ == "__main__":
     try:
-        attach(os.environ, sys.argv[1], Path(sys.argv[2]))
+        attach(os.environ, Path(sys.argv[1]))
     except (
         Error,
         OSError,

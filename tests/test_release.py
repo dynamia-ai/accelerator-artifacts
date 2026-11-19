@@ -14,11 +14,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from metadata import REPOSITORY, ROOT, Error, load_local, lock_path
 from record_release import attach
 from release import (
-    COMPONENT,
+    RECIPE_FILES,
     RELEASE_CONTROLS,
     WORKFLOW,
+    ReleaseTarget,
     ghcr_auth,
     licensing_digest,
+    platform_digests,
     preflight,
     raw_manifest,
     run,
@@ -26,8 +28,10 @@ from release import (
     verify_evidence,
 )
 
+COMPONENT = "cambricon/device-plugin"
+PLATFORM = "linux/amd64"
 RECIPE = "1" * 40
-RELEASE_TAG = "cambricon-device-plugin-v2.5.0"
+RELEASE_TAG = "release/cambricon/device-plugin/v2.5.0"
 CONTEXT = {
     "GITHUB_ACTIONS": "true",
     "GITHUB_REPOSITORY": REPOSITORY,
@@ -35,26 +39,38 @@ CONTEXT = {
     "GITHUB_EVENT_NAME": "workflow_dispatch",
     "GITHUB_WORKFLOW_REF": f"{WORKFLOW}@refs/heads/main",
     "RELEASE_REF": RELEASE_TAG,
+    "RELEASE_ENVIRONMENT": "public-ghcr-cambricon--device-plugin",
     "PUBLIC_RELEASE_ENABLED": "true",
     "GITHUB_SHA": RECIPE,
 }
 SOURCE = "private.test/staging/device-plugin"
-DESTINATION = "ghcr.io/dynamia-ai/accelerator-artifacts/cambricon-device-plugin"
+DESTINATION = "ghcr.io/dynamia-ai/accelerator-artifacts/cambricon/device-plugin"
 MANIFEST = b'{"schemaVersion":2,"layers":[]}'
 DIGEST = "sha256:" + hashlib.sha256(MANIFEST).hexdigest()
 
 
-def release_fixture(root, status):
-    component_path = root / lock_path(COMPONENT)
+def release_fixture(root, status, component=COMPONENT, platform=PLATFORM):
+    component_path = root / lock_path(component)
     component_path.parent.mkdir(parents=True)
     public_path = ROOT / lock_path(COMPONENT)
-    for name in ("upstream.yaml", "Dockerfile", "build.sh"):
-        component_path.with_name(name).write_bytes(public_path.with_name(name).read_bytes())
+    for name in RECIPE_FILES:
+        if name == "LICENSING.md":
+            continue
+        destination = component_path.with_name(name)
+        if name == "platform":
+            destination.write_text(platform + "\n")
+        else:
+            original = (
+                ROOT / lock_path(component)
+                if name == "upstream.yaml"
+                else public_path.with_name(name)
+            )
+            destination.write_bytes(original.read_bytes())
     for name in RELEASE_CONTROLS:
         destination = root / name
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes((ROOT / name).read_bytes())
-    lock = load_local(root, COMPONENT)
+    lock = load_local(root, component)
     component_path.with_name("LICENSING.md").write_text(
         f"Upstream-Tag: {lock.tag}\nPublic-Redistribution: {status}\n"
     )
@@ -72,9 +88,9 @@ class ReleaseTests(unittest.TestCase):
             output = root / "record.json"
             release_fixture(root, "pending")
             with self.assertRaisesRegex(Error, "release tag push or a retry from main"):
-                run(CONTEXT | {"GITHUB_EVENT_NAME": "pull_request"}, COMPONENT, output, root)
+                run(CONTEXT | {"GITHUB_EVENT_NAME": "pull_request"}, output, root)
             with self.assertRaisesRegex(Error, "not approved"):
-                run(CONTEXT, COMPONENT, output, root)
+                run(CONTEXT, output, root)
             self.assertFalse(output.exists())
             api.assert_not_called()
             auth.assert_not_called()
@@ -129,7 +145,7 @@ class ReleaseTests(unittest.TestCase):
                 "GITHUB_ACTOR": "workflow-actor",
                 "STAGING_AUTH": json.dumps({"auths": {"private.test": {"auth": "synthetic"}}}),
             }
-            run(env, COMPONENT, output, root)
+            run(env, output, root)
             text = output.read_text()
             self.assertNotIn(SOURCE, text)
             self.assertNotIn("synthetic", text)
@@ -153,7 +169,7 @@ class ReleaseTests(unittest.TestCase):
                     transfer_mock.reset_mock()
                     auth.reset_mock()
                     with self.assertRaisesRegex(Error, "have changed on main"):
-                        run(env, COMPONENT, output, root)
+                        run(env, output, root)
                     auth.assert_not_called()
                     transfer_mock.assert_not_called()
 
@@ -166,7 +182,7 @@ class ReleaseTests(unittest.TestCase):
             env = CONTEXT | {"GH_TOKEN": "read"}
             api.tag_commit.return_value = None
             with self.assertRaisesRegex(Error, "must already exist"):
-                preflight(env, COMPONENT, root)
+                preflight(env, root)
             api.tag_commit.assert_called_once_with(REPOSITORY, RELEASE_TAG)
             api.main.assert_not_called()
 
@@ -178,15 +194,15 @@ class ReleaseTests(unittest.TestCase):
                 "GITHUB_WORKFLOW_REF": f"{WORKFLOW}@refs/tags/{RELEASE_TAG}",
             }
             with self.assertRaisesRegex(Error, "no longer points to the triggering commit"):
-                preflight(tag_env, COMPONENT, root)
+                preflight(tag_env, root)
 
             api.tag_commit.return_value = RECIPE
             api.main.return_value = RECIPE
             api.is_ancestor.return_value = False
             with self.assertRaisesRegex(Error, "reviewed commit on main"):
-                preflight(tag_env, COMPONENT, root)
+                preflight(tag_env, root)
             api.is_ancestor.return_value = True
-            self.assertEqual(preflight(tag_env, COMPONENT, root)[0], lock)
+            self.assertEqual(preflight(tag_env, root).lock, lock)
 
     @patch("release.GitHub")
     def test_main_retry_keeps_the_existing_tag_recipe_sha(self, github):
@@ -202,7 +218,7 @@ class ReleaseTests(unittest.TestCase):
             for ref in (RELEASE_TAG, f"refs/tags/{RELEASE_TAG}"):
                 with self.subTest(ref=ref):
                     env = CONTEXT | {"GH_TOKEN": "read", "GITHUB_SHA": main, "RELEASE_REF": ref}
-                    self.assertEqual(preflight(env, COMPONENT, root)[2], RECIPE)
+                    self.assertEqual(preflight(env, root).recipe_commit, RECIPE)
             self.assertTrue(all(call.args[1] == RECIPE for call in api.file_at.call_args_list))
 
     @patch("release.GitHub")
@@ -215,13 +231,13 @@ class ReleaseTests(unittest.TestCase):
                 "main",
                 "refs/heads/main",
                 RECIPE,
-                "refs/tags/cambricon-device-plugin-v2.6.0",
+                "refs/tags/release/cambricon/device-plugin/v2.6.0",
             ):
                 with (
                     self.subTest(ref=ref),
-                    self.assertRaisesRegex(Error, "release ref must name the project release tag"),
+                    self.assertRaisesRegex(Error, "release ref must name a project release tag"),
                 ):
-                    preflight(env | {"RELEASE_REF": ref}, COMPONENT, root)
+                    preflight(env | {"RELEASE_REF": ref}, root)
             with self.assertRaisesRegex(Error, "retry from main"):
                 preflight(
                     env
@@ -229,10 +245,53 @@ class ReleaseTests(unittest.TestCase):
                         "GITHUB_REF": "refs/heads/feature",
                         "GITHUB_WORKFLOW_REF": f"{WORKFLOW}@refs/heads/feature",
                     },
-                    COMPONENT,
                     root,
                 )
             github.assert_not_called()
+
+    @patch("release.GitHub")
+    def test_routes_two_components_to_distinct_publish_targets(self, github):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            hygon = "hygon/hcu-device-plugin"
+            hygon_tag = f"release/{hygon}/v3.0.2"
+            cambricon_lock = release_fixture(root, "approved")
+            hygon_lock = release_fixture(root, "approved", hygon, "linux/arm64")
+            api = github.return_value
+            api.main.return_value = RECIPE
+            api.tag_commit.return_value = RECIPE
+            api.is_ancestor.return_value = True
+            env = CONTEXT | {"GH_TOKEN": "read"}
+
+            cambricon = preflight(env, root)
+            second = preflight(env | {"RELEASE_REF": f"refs/tags/{hygon_tag}"}, root)
+
+            self.assertEqual((cambricon.component, second.component), (COMPONENT, hygon))
+            self.assertEqual((cambricon.lock, second.lock), (cambricon_lock, hygon_lock))
+            self.assertEqual((cambricon.platform, second.platform), (PLATFORM, "linux/arm64"))
+            self.assertEqual(cambricon.image, DESTINATION)
+            self.assertEqual(second.image, f"ghcr.io/{REPOSITORY}/{hygon}")
+            self.assertEqual(second.environment, "public-ghcr-hygon--hcu-device-plugin")
+            with self.assertRaisesRegex(Error, "component release environment"):
+                run(env | {"RELEASE_REF": hygon_tag}, root / "record.json", root)
+            self.assertFalse((root / "record.json").exists())
+
+    @patch("release.GitHub")
+    def test_lock_only_component_cannot_enter_publisher(self, github):
+        with self.assertRaisesRegex(Error, "no publication recipe"):
+            preflight(CONTEXT | {"RELEASE_REF": "release/hygon/hcu-exporter/v3.0.2"})
+        github.assert_not_called()
+
+    @patch("release.quiet")
+    def test_manifest_platform_is_checked_against_component_platform(self, quiet):
+        quiet.return_value = b'{"os":"linux","architecture":"arm64"}'
+        auth = Path("unused-auth.json")
+        self.assertEqual(
+            platform_digests(SOURCE, MANIFEST, auth, "linux/arm64"),
+            [{"platform": "linux/arm64", "manifest_digest": DIGEST}],
+        )
+        with self.assertRaisesRegex(Error, "recipe platform"):
+            platform_digests(SOURCE, MANIFEST, auth, "linux/amd64")
 
     def test_licensing_approval_must_be_unique_and_version_specific(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -254,6 +313,7 @@ class ReleaseTests(unittest.TestCase):
     def test_evidence_is_signed_and_bound_to_reviewed_recipe(self):
         lock = load_local(ROOT, COMPONENT)
         license_sha = "3" * 64
+        target = ReleaseTarget(COMPONENT, RELEASE_TAG, lock, PLATFORM, license_sha, RECIPE)
         proof = {
             "component": COMPONENT,
             "upstream_repository": lock.repository,
@@ -298,20 +358,17 @@ class ReleaseTests(unittest.TestCase):
                 "STAGING_BUILDER_PUBLIC_KEY": public,
                 "STAGING_IMAGE_REPOSITORY": SOURCE,
             }
-            self.assertEqual(
-                verify_evidence(env, scratch, COMPONENT, lock, license_sha, RECIPE), proof
-            )
+            self.assertEqual(verify_evidence(env, scratch, target), proof)
             with self.assertRaisesRegex(Error, "signature"):
                 verify_evidence(
-                    env | {"STAGING_EVIDENCE": signed.read_text() + " "},
-                    scratch,
-                    COMPONENT,
-                    lock,
-                    license_sha,
-                    RECIPE,
+                    env | {"STAGING_EVIDENCE": signed.read_text() + " "}, scratch, target
                 )
             with self.assertRaisesRegex(Error, "reviewed recipe"):
-                verify_evidence(env, scratch, COMPONENT, lock, license_sha, "4" * 40)
+                verify_evidence(
+                    env,
+                    scratch,
+                    ReleaseTarget(COMPONENT, RELEASE_TAG, lock, PLATFORM, license_sha, "4" * 40),
+                )
 
     @patch("release.quiet")
     @patch("release.platform_digests")
@@ -333,6 +390,7 @@ class ReleaseTests(unittest.TestCase):
                 scratch / "dest",
                 scratch,
                 pre_write,
+                platform=PLATFORM,
             )
             self.assertEqual(json.loads((scratch / "anonymous.json").read_bytes()), {"auths": {}})
         pre_write.assert_called_once()
@@ -370,6 +428,7 @@ class ReleaseTests(unittest.TestCase):
                 scratch / "dest",
                 scratch,
                 pre_write,
+                platform=PLATFORM,
             )
             quiet.assert_called_once()
             self.assertEqual(quiet.call_args.args[1], "pull public image anonymously")
@@ -385,6 +444,7 @@ class ReleaseTests(unittest.TestCase):
                     scratch / "dest",
                     scratch,
                     pre_write,
+                    platform=PLATFORM,
                 )
             quiet.assert_not_called()
         pre_write.assert_not_called()
@@ -409,6 +469,7 @@ class ReleaseTests(unittest.TestCase):
                     scratch / "dest",
                     scratch,
                     Mock(),
+                    platform=PLATFORM,
                 )
         quiet.assert_called_once()
         self.assertIn(f"docker://{DESTINATION}:v2.5.0", quiet.call_args.args[0])
@@ -430,6 +491,7 @@ class ReleaseTests(unittest.TestCase):
                     scratch / "dest",
                     scratch,
                     Mock(),
+                    platform=PLATFORM,
                 )
         manifest.assert_called_once()
         quiet.assert_not_called()
@@ -442,14 +504,16 @@ class ReleaseTests(unittest.TestCase):
         self, preflight, github, gh
     ):
         lock = load_local(ROOT, COMPONENT)
-        preflight.return_value = (lock, "3" * 64, RECIPE)
+        preflight.return_value = ReleaseTarget(
+            COMPONENT, RELEASE_TAG, lock, PLATFORM, "3" * 64, RECIPE
+        )
         api = github.return_value
         api.tag_commit.return_value = RECIPE
         notes = f"Publication record for {COMPONENT} {lock.tag} at recipe commit {RECIPE}."
         api.api.return_value = [
             [
                 {
-                    "tag_name": f"cambricon-device-plugin-{lock.tag}",
+                    "tag_name": RELEASE_TAG,
                     "body": notes,
                     "draft": False,
                     "assets": [{"id": 7, "name": "release-record.json"}],
@@ -470,16 +534,16 @@ class ReleaseTests(unittest.TestCase):
             path = Path(directory) / "release-record.json"
             path.write_text(json.dumps(record))
             gh.return_value = json.dumps(record | {"verified_at": "previous"}).encode()
-            attach(CONTEXT | {"GH_TOKEN": "mock"}, COMPONENT, path)
+            attach(CONTEXT | {"GH_TOKEN": "mock"}, path)
             gh.assert_called_once()
             self.assertEqual(gh.call_args.args[1][0], "api")
             gh.return_value = json.dumps(record | {"digest": "sha256:" + "4" * 64}).encode()
             with self.assertRaisesRegex(Error, "different image"):
-                attach(CONTEXT | {"GH_TOKEN": "mock"}, COMPONENT, path)
+                attach(CONTEXT | {"GH_TOKEN": "mock"}, path)
             gh.reset_mock()
             path.write_text(json.dumps(record | {"image": f"{SOURCE}:{lock.tag}"}))
             with self.assertRaisesRegex(Error, "does not match"):
-                attach(CONTEXT | {"GH_TOKEN": "mock"}, COMPONENT, path)
+                attach(CONTEXT | {"GH_TOKEN": "mock"}, path)
             gh.assert_not_called()
 
     @patch("record_release.run_gh")
@@ -487,12 +551,14 @@ class ReleaseTests(unittest.TestCase):
     @patch("record_release.preflight")
     def test_retry_replaces_only_empty_draft_asset_placeholder(self, preflight, github, gh):
         lock = load_local(ROOT, COMPONENT)
-        preflight.return_value = (lock, "3" * 64, RECIPE)
+        preflight.return_value = ReleaseTarget(
+            COMPONENT, RELEASE_TAG, lock, PLATFORM, "3" * 64, RECIPE
+        )
         api = github.return_value
         api.tag_commit.return_value = RECIPE
         draft = {
             "id": 12,
-            "tag_name": f"cambricon-device-plugin-{lock.tag}",
+            "tag_name": RELEASE_TAG,
             "target_commitish": RECIPE,
             "body": f"Publication record for {COMPONENT} {lock.tag} at recipe commit {RECIPE}.",
             "draft": True,
@@ -515,7 +581,7 @@ class ReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "release-record.json"
             path.write_text(json.dumps(record))
-            attach(CONTEXT | {"GH_TOKEN": "mock"}, COMPONENT, path)
+            attach(CONTEXT | {"GH_TOKEN": "mock"}, path)
         deleted, uploaded, verified, published = [call.args[1] for call in gh.call_args_list]
         self.assertEqual(
             deleted, ["api", "--method", "DELETE", f"repos/{REPOSITORY}/releases/assets/7"]
@@ -529,7 +595,9 @@ class ReleaseTests(unittest.TestCase):
     @patch("record_release.preflight")
     def test_release_record_uses_existing_tag_and_never_creates_one(self, preflight, github, gh):
         lock = load_local(ROOT, COMPONENT)
-        preflight.return_value = (lock, "3" * 64, RECIPE)
+        preflight.return_value = ReleaseTarget(
+            COMPONENT, RELEASE_TAG, lock, PLATFORM, "3" * 64, RECIPE
+        )
         api = github.return_value
         api.tag_commit.return_value = RECIPE
         draft = {"id": 12, "tag_name": RELEASE_TAG, "draft": True, "assets": []}
@@ -548,7 +616,7 @@ class ReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "release-record.json"
             path.write_text(json.dumps(record))
-            attach(CONTEXT | {"GH_TOKEN": "mock"}, COMPONENT, path)
+            attach(CONTEXT | {"GH_TOKEN": "mock"}, path)
         create = gh.call_args_list[0].args[1]
         self.assertEqual(create[:3], ["release", "create", RELEASE_TAG])
         self.assertIn("--verify-tag", create)
@@ -556,6 +624,32 @@ class ReleaseTests(unittest.TestCase):
 
 
 class RecipeTests(unittest.TestCase):
+    def test_public_check_uses_only_a_temporary_public_context(self):
+        recipe = (ROOT / lock_path(COMPONENT)).parent
+        with tempfile.TemporaryDirectory() as directory:
+            scratch = Path(directory)
+            docker = scratch / "docker"
+            docker.write_text(
+                "#!/bin/bash\n"
+                "set -eu\n"
+                '[[ "$*" == "buildx build --check --platform linux/amd64 --file "* ]]\n'
+                '[[ "$7" == */device-plugin/Dockerfile ]]\n'
+                'test -f "$8/source/pkg/cndev/include/.keep"\n'
+                'test -f "$8/licenses/.keep"\n'
+                "printf '%s\\n' \"$8\"\n"
+            )
+            docker.chmod(0o755)
+            context = subprocess.check_output(
+                ["bash", str(recipe / "build.sh"), "--check-public"],
+                env={
+                    "PATH": f"{scratch}{os.pathsep}{os.environ['PATH']}",
+                    "RUNNER_TEMP": directory,
+                },
+                text=True,
+            ).strip()
+            self.assertEqual(Path(context).parent.resolve(), scratch.resolve())
+            self.assertFalse(Path(context).exists())
+
     def test_reports_missing_inputs_without_opening_the_build(self):
         recipe = ROOT / lock_path(COMPONENT)
         result = subprocess.run(
