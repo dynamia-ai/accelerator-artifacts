@@ -9,10 +9,12 @@ permissions:
   contents: read
 
 jobs:
-  python:
-    name: Check Python tooling
-    runs-on: ubuntu-26.04
+  discover:
+    name: Discover components and check tooling
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
+    outputs:
+      components: ${{ steps.inventory.outputs.components }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -20,82 +22,63 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version-file: .python-version
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.9"
-          cache-dependency-glob: uv.lock
-      - name: Check Python
+      - name: Check repository tooling
         run: |
           uv run --locked ruff check scripts tests
           uv run --locked ruff format --check scripts tests
-          uv run --locked python -m unittest discover -s tests -v
-
-  discover:
-    name: Discover components
-    runs-on: ubuntu-26.04
-    timeout-minutes: 5
-    outputs:
-      matrix: ${{ steps.inventory.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version-file: .python-version
+          uv run --locked python -m unittest discover -s tests
+          bash -n scripts/import-image.sh
       - id: inventory
         run: |
-          matrix="$(python3 scripts/check_components.py --matrix)"
-          printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
+          components=$(python3 scripts/components.py matrix)
+          echo "components=$components" >> "$GITHUB_OUTPUT"
 
-  component:
+  build:
     name: Check ${{ matrix.component }}
     needs: discover
-    runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    if: needs.discover.outputs.components != '[]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
+      matrix:
+        component: ${{ fromJSON(needs.discover.outputs.components) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version-file: .python-version
-      - name: Validate the component lock
-        env:
-          GH_TOKEN: ${{ github.token }}
-          COMPONENT: ${{ matrix.component }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      - name: Install Skopeo
         run: |
-          args=(--component "$COMPONENT")
-          if [[ -n "$PR_BASE_SHA" ]]; then
-            args+=(--base "$PR_BASE_SHA")
+          if ! command -v skopeo >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends skopeo
           fi
-          python3 scripts/check_components.py "${args[@]}"
-      - name: Check the image recipe with public inputs
+      - name: Prepare component artifacts
         env:
           COMPONENT: ${{ matrix.component }}
-        run: |
-          recipe="vendors/$COMPONENT/build.sh"
-          if [[ -f "$recipe" ]]; then
-            bash -n "$recipe"
-            bash "$recipe" --check-public
-          fi
+        run: python3 scripts/components.py build "$COMPONENT"
 
   required:
     name: Public checks passed
-    if: ${{ always() }}
-    needs: [python, discover, component]
-    runs-on: ubuntu-26.04
+    if: always()
+    needs: [discover, build]
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Require successful public checks
-        env:
-          PYTHON_RESULT: ${{ needs.python.result }}
-          DISCOVER_RESULT: ${{ needs.discover.result }}
-          COMPONENT_RESULT: ${{ needs.component.result }}
-        run: test "$PYTHON_RESULT/$DISCOVER_RESULT/$COMPONENT_RESULT" = success/success/success
+      - env:
+          DISCOVER: ${{ needs.discover.result }}
+          BUILD: ${{ needs.build.result }}
+          COMPONENTS: ${{ needs.discover.outputs.components }}
+        run: |
+          test "$DISCOVER" = success
+          if [[ "$COMPONENTS" == '[]' ]]; then
+            test "$BUILD" = skipped
+          else
+            test "$BUILD" = success
+          fi

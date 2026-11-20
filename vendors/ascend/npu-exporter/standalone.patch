@@ -1,0 +1,10 @@
+--- a/templates/main.yaml
++++ b/templates/main.yaml
+@@ -19,6 +19,6 @@
+   {{- with $currentScope }}
+     {{- $content := $.Files.Get $path -}}
+     {{- tpl $content $ }}
+----
++{{ printf "---\n" }}
+   {{- end }}
+ {{- end }}

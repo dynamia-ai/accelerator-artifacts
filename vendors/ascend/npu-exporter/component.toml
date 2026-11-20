@@ -1,0 +1,5 @@
+version = "v26.2.0"
+
+[artifacts.npu-exporter]
+kind = "helm-chart"
+approved_version = "v26.2.0"

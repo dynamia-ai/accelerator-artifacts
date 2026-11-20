@@ -17,8 +17,3 @@ updates:
     commit-message:
       prefix: chore
       include: scope
-    groups:
-      artifact-actions:
-        patterns:
-          - actions/upload-artifact
-          - actions/download-artifact

@@ -8,32 +8,13 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/^vendors\\/[^/]+\\/[^/]+\\/upstream\\.yaml$/"
+        "/^vendors/[^/]+/[^/]+/component\\.toml$/"
       ],
       "matchStrings": [
-        "(?:^|\\r?\\n)repository:[ \\t]+[\"\\']?https://github\\.com/(?<depName>[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_][A-Za-z0-9_.-]*)[\"\\']?[ \\t]*(?:#[^\\r\\n]*)?\\r?\\ntag:[ \\t]+[\"\\']?(?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)[\"\\']?[ \\t]*(?:#[^\\r\\n]*)?\\r?\\ncommit:[ \\t]+[\"\\']?(?<currentDigest>[0-9a-f]{40})[\"\\']?[ \\t]*(?:#[^\\r\\n]*)?(?:\\r?\\n|$)"
+        "(?:^|\\r?\\n)upstream = \"(?<depName>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)\"\\r?\\nversion = \"(?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)\""
       ],
       "datasourceTemplate": "github-releases",
       "versioningTemplate": "regex:^v(?<major>0|[1-9][0-9]*)\\.(?<minor>0|[1-9][0-9]*)\\.(?<patch>0|[1-9][0-9]*)$"
-    }
-  ],
-  "packageRules": [
-    {
-      "matchManagers": [
-        "custom.regex"
-      ],
-      "pinDigests": true,
-      "ignoreUnstable": true
-    },
-    {
-      "matchManagers": [
-        "custom.regex"
-      ],
-      "matchUpdateTypes": [
-        "digest",
-        "pinDigest"
-      ],
-      "enabled": false
     }
   ],
   "platformCommit": "enabled",
@@ -41,7 +22,7 @@
     "Signed-off-by: renovate[bot] <29139614+renovate[bot]@users.noreply.github.com>"
   ],
   "prBodyNotes": [
-    "Review the upstream changes and confirm both locked tag-to-commit mappings.",
-    "For published components, review the build inputs and version-specific redistribution declaration."
+    "Update the pinned upstream artifacts and their checksums.",
+    "Review the new artifacts and record version-specific redistribution approval before release."
   ]
 }
