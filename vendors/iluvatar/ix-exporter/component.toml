@@ -1,0 +1,9 @@
+upstream = "Deep-Spark/ix-exporter"
+version = "v4.3.0"
+
+[artifacts.ix-exporter]
+kind = "helm-chart"
+approved_version = "v4.3.0"
+
+[artifacts.exporter]
+kind = "app-image"
