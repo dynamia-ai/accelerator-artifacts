@@ -588,7 +588,19 @@ class ReleaseTests(unittest.TestCase):
         )
         self.assertEqual(uploaded[:2], ["release", "upload"])
         self.assertEqual(verified[1], f"repos/{REPOSITORY}/releases/assets/8")
-        self.assertIn("--draft=false", published)
+        self.assertEqual(
+            published,
+            [
+                "api",
+                "--method",
+                "PATCH",
+                f"repos/{REPOSITORY}/releases/{draft['id']}",
+                "--field",
+                "draft=false",
+                "--raw-field",
+                "make_latest=false",
+            ],
+        )
 
     @patch("record_release.run_gh")
     @patch("record_release.GitHub")

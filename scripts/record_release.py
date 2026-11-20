@@ -128,7 +128,16 @@ def attach(env, path):
         require_current_release()
         run_gh(
             token,
-            ["release", "edit", tag, *repo, "--draft=false", "--latest=false"],
+            [
+                "api",
+                "--method",
+                "PATCH",
+                f"repos/{REPOSITORY}/releases/{release['id']}",
+                "--field",
+                "draft=false",
+                "--raw-field",
+                "make_latest=false",
+            ],
             "publish GitHub Release",
         )
     if api.tag_commit(REPOSITORY, tag) != recipe:
