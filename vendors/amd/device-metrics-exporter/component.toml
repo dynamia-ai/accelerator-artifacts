@@ -6,3 +6,4 @@ kind = "app-image"
 
 [artifacts.device-metrics-exporter-charts]
 kind = "helm-chart"
+approved_version = "v1.5.3"

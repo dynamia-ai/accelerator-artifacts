@@ -63,7 +63,7 @@ approved_version = "v1.2.3"
 
 ## 发布约定
 
-从已合入 `main` 的提交创建 `release/<vendor>/<component>/<version>` tag。一次发布覆盖该组件版本的全部产物，清单中各产物的 `approved_version` 必须与本次版本一致。同一组件的发布串行，不同组件可并行。在 `main` 手动重试时输入原发布 tag，仍使用该 tag 的配方。
+从已合入 `main` 的提交创建 `release/<vendor>/<component>/<version>` tag。组件版本 tag 发布全部产物。只发布一个产物时，在版本后加 `-artifact-<产物名>`。所选产物的 `approved_version` 必须与组件版本一致。同一组件的发布串行，不同组件可并行。在 `main` 手动重试时输入原发布 tag，仍使用该 tag 的配方。
 
 | 产物 | GHCR 引用 |
 | --- | --- |

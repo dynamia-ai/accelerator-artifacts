@@ -53,7 +53,7 @@ kubectl -n iluvatar-vgpu-manager rollout status daemonset/iluvatar-vgpu-manager-
 
 ## 分发说明
 
-Chart 和运行镜像均待发布审批。 [上游许可证原文](LICENSE)
+Chart 可按产物单独发布。运行镜像继续使用厂商来源。 [上游许可证原文](LICENSE)
 
 ### Helm Chart
 

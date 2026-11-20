@@ -15,7 +15,7 @@
 ## 发布到 GHCR
 
 1. 在原仓库预先配置 `public-ghcr` Environment 和维护者审批。允许从 `main` 与 `release/*/*/v*` 运行，并将 Environment 变量 `GHCR_PUBLISH_ENABLED` 设为 `true`。通过仓库规则限制发布 tag 的创建权限，禁止移动或删除已发布 tag。已有 GHCR 包需给本仓库的 Actions 授予写权限。 [GHCR 权限配置](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
-2. 确认组件每个产物的 `approved_version` 都与清单版本一致。从已合入 `main` 的提交创建并推送发布 tag，例如 `release/ascend/npu-exporter/v26.2.0`。
+2. 确认要发布的产物的 `approved_version` 与组件版本一致。从已合入 `main` 的提交创建并推送发布 tag。发布整个组件时使用 `release/<厂商>/<组件>/<版本>`。单独发布 Chart 等产物时使用 `release/<厂商>/<组件>/<版本>-artifact-<产物名>`，例如 `release/iluvatar/ix-exporter/v4.3.0-artifact-ix-exporter`。
 3. 批准 `Publish accelerator artifacts` 的发布 job。打开运行摘要，核对每个产物的引用和 OCI digest。
 4. 首次创建 GHCR 包时，在包设置中将可见性设为公开。用未登录 GHCR 的客户端拉取并核对 digest，再将引用交给文档或下游同步流程。 [包可见性设置](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility)
 

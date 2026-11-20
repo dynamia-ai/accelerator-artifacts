@@ -163,6 +163,21 @@ class ComponentTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "pending for install, main, sidecar"):
             components.release_component("release/vendor/component/v1.2.4")
 
+    def test_release_can_select_one_approved_artifact(self):
+        self.config.write_text(
+            MIXED.replace('approved_version = "v1.2.3"', 'approved_version = "v1.2.2"', 2)
+        )
+        tag = "release/vendor/component/v1.2.3"
+        selected = components.release_component(f"{tag}-artifact-sidecar")
+        self.assertEqual(selected.version, "v1.2.3")
+        self.assertEqual([artifact.name for artifact in selected.artifacts], ["sidecar"])
+        with self.assertRaisesRegex(ValueError, "pending for install, main"):
+            components.release_component(tag)
+        with self.assertRaisesRegex(ValueError, "pending for install"):
+            components.release_component(f"{tag}-artifact-install")
+        with self.assertRaisesRegex(ValueError, "unknown artifact missing"):
+            components.release_component(f"{tag}-artifact-missing")
+
     def test_chart_retry_ignores_tar_timestamps_and_order(self):
         paths = [self.root / "first.tgz", self.root / "second.tgz"]
         for timestamp, path in enumerate(paths, start=1):
