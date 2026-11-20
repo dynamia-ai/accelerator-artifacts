@@ -1,0 +1,8 @@
+upstream = "ROCm/device-metrics-exporter"
+version = "v1.5.3"
+
+[artifacts.device-metrics-exporter]
+kind = "app-image"
+
+[artifacts.device-metrics-exporter-charts]
+kind = "helm-chart"
