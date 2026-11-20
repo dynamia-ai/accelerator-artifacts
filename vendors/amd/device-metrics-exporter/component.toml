@@ -1,5 +1,5 @@
 upstream = "ROCm/device-metrics-exporter"
-version = "v1.5.3"
+version = "v1.5.4"
 
 [artifacts.device-metrics-exporter]
 kind = "app-image"
