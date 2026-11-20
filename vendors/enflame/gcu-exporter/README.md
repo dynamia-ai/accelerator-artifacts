@@ -35,9 +35,9 @@ python3 -m unittest discover -s vendors/enflame/gcu-exporter
 
 ## 分发说明
 
-自建镜像仍待发布审批。 [上游许可证原文](LICENSE)
+自建镜像随附上游声明，并提供与构建输入对应的源码包。 [上游许可证原文](LICENSE) · [源码交付说明](SOURCES.md)
 
 `gcu-exporter` 源码和源码归档内的 `go-eflib` 绑定采用 Apache License 2.0。按适用许可证履行义务后，可以再分发受该许可覆盖的源码和编译产物。镜像在 `/usr/share/doc/gcu-exporter/` 保留上游 `LICENSE`、`LICENSE.md`、`NOTICE`、Go 许可和源码归档中的第三方许可文件。`go-eflib` 绑定编译进 Exporter，EFML 运行库由节点的厂商驱动提供。 [上游许可证](https://github.com/EnflameTechnology/gcu-exporter/blob/a83264c908916e94480a42cddcd0615c56def9e6/LICENSE) · [上游 NOTICE](https://github.com/EnflameTechnology/gcu-exporter/blob/a83264c908916e94480a42cddcd0615c56def9e6/NOTICE) · [go-eflib 许可证](https://github.com/EnflameTechnology/gcu-exporter/blob/a83264c908916e94480a42cddcd0615c56def9e6/vendor/go-eflib/LICENSE)
 
-- **本仓库构建的 OCI 镜像**待发布审核。按实际链接的 Go 依赖及固定的 Debian 基础镜像核对许可证、版权通知和适用的源码提供义务，再记录 `approved_version`。如修改上游文件，按 Apache License 2.0 标注改动。
+- **本仓库构建的 OCI 镜像**通过 GitHub Release 提供固定的 Exporter 源码归档、Debian 基础镜像内的对应源码包及构建配方。镜像标签和 OCI 许可附件都指向该 Release。
 - **厂商成品镜像**待厂商确认。官方公开源码的许可证覆盖源码及其衍生作品，成品里的基础镜像、第三方软件和随包运行库各有条款。取得固定镜像及其内容清单后，按镜像核对再分发授权和交付义务。 [厂商镜像配置](https://github.com/EnflameTechnology/gcu-exporter/blob/a83264c908916e94480a42cddcd0615c56def9e6/deployments/build-image.conf)
