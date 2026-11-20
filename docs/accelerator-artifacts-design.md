@@ -30,7 +30,7 @@ vendors/
       Makefile
 ```
 
-`component.toml` 声明组件版本和任意数量的命名产物。组件版本使用 `vX.Y.Z`，仅含运行镜像的组件也可使用四段版本号。每个产物指定 `kind`，可填写已确认允许再分发的 `approved_version`。`helm-chart` 对应 Helm OCI Chart，`app-image` 对应运行镜像，两种类型可以出现在同一个清单中。Chart 仅引用的外部镜像由集群直接拉取，从组件 README 查找其来源和安装条件。
+`component.toml` 声明组件版本和任意数量的命名产物。组件版本使用 `vX.Y.Z`，仅含运行镜像的组件也可使用四段版本号。每个产物指定 `kind`，可用 `approved_version` 指定当前允许发布的版本。`helm-chart` 对应 Helm OCI Chart，`app-image` 对应运行镜像，两种类型可以出现在同一个清单中。Chart 仅引用的外部镜像由集群直接拉取，从组件 README 查找其来源和安装条件。
 
 ```toml
 version = "v1.2.3"
@@ -48,7 +48,7 @@ kind = "app-image"
 approved_version = "v1.2.3"
 ```
 
-组件 README 记录官方获取和安装方式。`LICENSE` 保留对应版本的上游许可证原文。正式发布要求清单内每个产物的 `approved_version` 都等于本次发布版本。
+组件 README 记录官方获取和安装方式，以及厂商明确列出的分发限制或随包要求。上游提供 `LICENSE` 文件时保留原文。组件发现和构建只依赖清单、Makefile 和 README。
 
 ## 构建约定
 
@@ -57,13 +57,13 @@ approved_version = "v1.2.3"
 | 产物类型 | 输出 |
 | --- | --- |
 | `helm-chart` | `<artifact>-<chart-version>.tgz`。Chart 名称等于产物名，Chart 版本是组件版本去掉前导 `v` 后的三段版本号。 |
-| `app-image` | `image-source`。文件包含一行 Skopeo 源引用，例如构建目录中的 `oci:/…/image:artifact`，或者使用 digest 固定的厂商 `docker://…@sha256:…`。 |
+| `app-image` | `image-source`。文件包含一行 Skopeo 源引用，例如构建目录中的 `oci:/…/image:artifact`，或者使用 digest 固定的厂商 `docker://…@sha256:…`。随镜像交付的协议副本放在同目录的 `LICENSE`。 |
 
 厂商提供 Docker 镜像包时，先校验归档 SHA-256，再用 Skopeo 导入本地 OCI 布局。厂商提供镜像仓库时，按 digest 复制，保留多架构索引及所有平台。只有确需从源码构建时才复用上游配方，逐平台使用原生 runner，禁止使用 QEMU。Chart 脚本复用上游文件和工具，组件目录保留必要的打包补丁。
 
 ## 发布约定
 
-从已合入 `main` 的提交创建 `release/<vendor>/<component>/<version>` tag。一次发布覆盖该组件版本的全部产物。同一组件的发布串行，不同组件可并行。在 `main` 手动重试时输入原发布 tag，仍使用该 tag 的配方。
+从已合入 `main` 的提交创建 `release/<vendor>/<component>/<version>` tag。一次发布覆盖该组件版本的全部产物，清单中各产物的 `approved_version` 必须与本次版本一致。同一组件的发布串行，不同组件可并行。在 `main` 手动重试时输入原发布 tag，仍使用该 tag 的配方。
 
 | 产物 | GHCR 引用 |
 | --- | --- |
@@ -72,7 +72,7 @@ approved_version = "v1.2.3"
 
 路径末段使用 `component.toml` 中的产物名。单产物组件使用组件名作为产物名。公开 CI 和发布流程检查不同组件是否声明了相同的 GHCR 包路径。
 
-发布前准备全部产物，将 Chart 归档的成员顺序和时间戳规范化，再检查目标版本。已经存在且内容一致的产物可复用。内容不同或查询出错时中止。Skopeo 按 digest 保真复制镜像，Helm 推送 Chart，Actions 摘要记录各产物的引用与 OCI digest。已发布的产物在后续步骤失败时可通过同一 tag 重试。仅原仓库受保护的发布 job 有 GHCR 写权限，PR 检查只准备本地产物。 [Helm OCI 规范](https://helm.sh/docs/topics/registries/) · [Skopeo 复制选项](https://github.com/containers/skopeo/blob/main/docs/skopeo-copy.1.md)
+发布前准备全部产物，将 Chart 归档的成员顺序和时间戳规范化，再检查目标版本。已经存在且内容一致的产物可复用。内容不同或查询出错时中止。Skopeo 按 digest 保真复制镜像，Helm 推送 Chart，应用镜像输出中有 `LICENSE` 时，用 ORAS 将协议副本作为 OCI 附件关联到已发布的镜像 digest。Actions 摘要记录各产物的引用、OCI digest 和协议附件引用。已发布的产物在后续步骤失败时可通过同一 tag 重试。仅原仓库受保护的发布 job 有 GHCR 写权限，PR 检查只准备本地产物。 [Helm OCI 规范](https://helm.sh/docs/topics/registries/) · [Skopeo 复制选项](https://github.com/containers/skopeo/blob/main/docs/skopeo-copy.1.md)
 
 ## 首版分发与厂商接入计划
 
@@ -83,7 +83,8 @@ approved_version = "v1.2.3"
 | 天数智芯 | `iluvatar/ix-exporter`、`iluvatar/vgpu-manager`、`iluvatar/ix-device-plugin` | 优先核对 `ix-exporter` 的官方 Chart 与双架构镜像，两类产物各自审核。再评估 HAMi 路径的 vGPU Manager 与独立 Device Plugin。 [IX Exporter Release](https://github.com/Deep-Spark/ix-exporter/releases/tag/v4.3.0) |
 | AMD | `amd/device-metrics-exporter`，官方应用镜像和 Chart 候选 | 核对 ROCm Exporter 成品依赖与分发条款。AMD Device Plugin 沿用 HAMi 社区版本。 [ROCm Exporter Helm 安装](https://instinct.docs.amd.com/projects/device-metrics-exporter/en/latest/installation/kubernetes-helm.html) |
 | 昆仑芯 | `kunlunxin/dcxm-exporter`，官方镜像包候选 | 核对 DCXM 包格式和分发条款。TKE 的插件和 Exporter 沿用云服务安装入口。 |
-| 燧原、沐曦、摩尔线程 | `enflame/gcu-exporter`、`metax/mx-exporter`、`mthreads/mtgpu-exporter` | 从厂商确认固定版本、获取方式及成品分发条款。各家的 Device Plugin 先沿用厂商安装入口。 |
+| 燧原、沐曦 | `enflame/gcu-exporter`、`metax/mx-exporter` | 核对固定版本、获取方式和厂商明示的分发条件。Device Plugin 沿用厂商安装入口。 |
+| 摩尔线程 | `mthreads/mtgpu-exporter`，1 个应用镜像 | 使用 KUAE v2.1.0 的官方双架构镜像索引。Device Plugin 通过 MT GPU Operator 安装。 |
 | 寒武纪 | Device Plugin、MLU Exporter 的官方安装入口 | 构建需要配套驱动包，厂商目录仅提供获取与安装说明。 |
 | NVIDIA、AWS Neuron、平头哥 PPU、Intel | 沿用官方镜像、Chart 或云服务安装入口 | 首版通过现有渠道获取。按明确的分发需求评估具体成品。 |
 | 瀚博、壁仞、太初元碁 | 沿用 HAMi 或厂商安装入口 | 接入前先确认可获取的组件、交付方式与公开分发条件。 |

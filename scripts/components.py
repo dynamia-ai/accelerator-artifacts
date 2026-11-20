@@ -4,6 +4,7 @@ import argparse
 import gzip
 import hashlib
 import json
+import os
 import re
 import subprocess
 import tarfile
@@ -47,7 +48,7 @@ def component(name: str) -> Component:
     if not re.fullmatch(rf"{SLUG}/{SLUG}", name):
         raise ValueError(f"Invalid component name: {name}")
     directory = ROOT / "vendors" / name
-    for filename in ("README.md", "LICENSE", "Makefile", "component.toml"):
+    for filename in ("README.md", "Makefile", "component.toml"):
         if not (directory / filename).is_file():
             raise ValueError(f"{name}: missing {filename}")
 
@@ -204,6 +205,7 @@ class Publication:
     kind: str
     source: str
     content_digest: str
+    license_file: Path | None = None
 
     @property
     def reference(self) -> str:
@@ -239,6 +241,28 @@ class Publication:
             run("helm", "push", self.source, f"oci://{self.repository.rsplit('/', 1)[0]}")
 
 
+def attach_license(reference: str, license_file: Path) -> str:
+    authfile = os.environ.get("REGISTRY_AUTH_FILE")
+    registry_config = ["--registry-config", authfile] if authfile else []
+    result = run(
+        "oras",
+        "attach",
+        *registry_config,
+        "--artifact-type",
+        "application/vnd.dynamia.license.v1",
+        # A stable timestamp makes retries reuse an identical attachment.
+        "--annotation",
+        "org.opencontainers.image.created=1970-01-01T00:00:00Z",
+        "--format",
+        "json",
+        reference,
+        "LICENSE:text/plain",
+        cwd=license_file.parent,
+        capture_output=True,
+    )
+    return json.loads(result.stdout)["digest"]
+
+
 def publish(selected: Component, directory: Path) -> list[str]:
     publications = []
     for artifact in selected.artifacts:
@@ -247,6 +271,7 @@ def publish(selected: Component, directory: Path) -> list[str]:
         if artifact.kind == "app-image":
             source = image_source(path)
             raw = manifest(source)
+            license_file = path.with_name("LICENSE")
             publications.append(
                 Publication(
                     repository,
@@ -254,6 +279,7 @@ def publish(selected: Component, directory: Path) -> list[str]:
                     artifact.kind,
                     source,
                     digest(raw),
+                    license_file if license_file.is_file() else None,
                 )
             )
         else:
@@ -277,6 +303,9 @@ def publish(selected: Component, directory: Path) -> list[str]:
         if item.kind == "helm-chart":
             reference = f"oci://{reference}"
         record = f"`{item.reference}` → `{reference}`"
+        if item.license_file is not None:
+            license_digest = attach_license(reference, item.license_file)
+            record += f" · LICENSE: `{item.repository}@{license_digest}`"
         print(record, flush=True)
         records.append(record)
     return records
