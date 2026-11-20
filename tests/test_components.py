@@ -44,6 +44,13 @@ class ComponentTests(unittest.TestCase):
         readme.touch()
         self.assertEqual([item.name for item in components.inventory()], ["vendor/component"])
 
+    def test_component_without_license_file_is_discoverable(self):
+        (self.directory / "LICENSE").unlink()
+
+        self.assertEqual([item.name for item in components.inventory()], ["vendor/component"])
+        selected = components.release_component("release/vendor/component/v1.2.3")
+        self.assertEqual(selected.name, "vendor/component")
+
     def test_release_rejects_package_path_shared_by_two_components(self):
         other = self.directory.parent / "other"
         other.mkdir()
@@ -100,6 +107,31 @@ class ComponentTests(unittest.TestCase):
                 ),
             ],
         )
+
+    def test_publish_attaches_license_to_existing_image_digest(self):
+        self.config.write_text('version = "v1.2.3"\n[artifacts.main]\nkind = "app-image"\n')
+        selected = components.component("vendor/component")
+        directory = self.root / "output"
+        image_dir = directory / "main"
+        image_dir.mkdir(parents=True)
+        license_file = image_dir / "LICENSE"
+        license_file.write_text("upstream terms")
+
+        with (
+            patch.object(components, "image_source", return_value="docker://example.com/image"),
+            patch.object(components, "manifest", return_value=b"image manifest"),
+            patch.object(components.Publication, "inspect", return_value="sha256:image"),
+            patch.object(components.Publication, "push") as push,
+            patch.object(components, "attach_license", return_value="sha256:license") as attach,
+            patch("builtins.print"),
+        ):
+            records = components.publish(selected, directory)
+
+        push.assert_not_called()
+        repository = "ghcr.io/dynamia-ai/vendor/main"
+        attach.assert_called_once_with(f"{repository}@sha256:image", license_file)
+        image_record = f"`{repository}:v1.2.3` → `{repository}@sha256:image`"
+        self.assertEqual(records, [f"{image_record} · LICENSE: `{repository}@sha256:license`"])
 
     def test_mixed_component_runs_one_make_target_per_kind(self):
         component = components.component("vendor/component")

@@ -2,13 +2,13 @@
 
 ## 检查组件
 
-在 `vendors/<vendor>/<component>/` 添加 `component.toml`、`Makefile`、`README.md` 和上游 `LICENSE` 原文。清单声明组件版本、产物名和各产物类型。Makefile 为 `app-image` 实现 `app`，为 `helm-chart` 实现 `chart`。同一目标准备该类型的全部产物。 [产物输出约定](accelerator-artifacts-design.md#构建约定)
+在 `vendors/<vendor>/<component>/` 添加 `component.toml`、`Makefile` 和 `README.md`。上游提供 `LICENSE` 文件时保留原文。清单声明组件版本、产物名和各产物类型。Makefile 为 `app-image` 实现 `app`，为 `helm-chart` 实现 `chart`。同一目标准备该类型的全部产物。 [产物输出约定](accelerator-artifacts-design.md#构建约定)
 
 使用 `uv run --locked python scripts/components.py build <vendor>/<component>` 按 CI 的方式准备并检查组件产物。公开 CI 自动发现组件，每个组件运行独立任务。将 `Public checks passed` 设为合入所需的检查。
 
 ## 更新上游版本
 
-更新组件时，设置 `component.toml` 的 `version`，更新构建输入并同步该版本的上游 `LICENSE`。确认某个产物的新版可公开再分发后，将该产物的 `approved_version` 更新为 `version`。
+更新组件时，设置 `component.toml` 的 `version`，更新构建输入。上游提供 `LICENSE` 文件时，同步为对应版本。发布新版时，按厂商明确列出的条件准备随包材料，并将要发布的产物的 `approved_version` 更新为 `version`。
 
 海光组件由 Renovate 跟踪 GitHub 正式 Release。Renovate 只更新清单的 `version`，合入更新 PR 前还需更新 Makefile 中的归档 SHA-256。昇腾组件按 GitCode 的正式版本手动更新清单、源码 commit 和打包补丁。Dependabot 管理本仓库的 uv 依赖与 GitHub Actions。 [Renovate GitHub Releases 数据源](https://docs.renovatebot.com/modules/datasource/github-releases/)
 
