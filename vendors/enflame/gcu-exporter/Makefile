@@ -25,4 +25,5 @@ endif
 		mkdir -p "$$out"; \
 		source="oci:$$out/image:gcu-exporter"; \
 		skopeo copy --preserve-digests "oci-archive:$$tmp/image.tar" "$$source"; \
+		{ cat LICENSE; printf '\n'; cat SOURCES.md; } > "$$out/LICENSE"; \
 		printf '%s\n' "$$source" > "$$out/image-source"
