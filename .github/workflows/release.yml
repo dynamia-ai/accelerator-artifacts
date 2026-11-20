@@ -59,7 +59,9 @@ jobs:
     concurrency:
       group: publish-${{ needs.resolve.outputs.component }}
       queue: max
-    environment: public-ghcr
+    environment:
+      name: public-ghcr
+      deployment: false
     permissions:
       contents: read
       packages: write

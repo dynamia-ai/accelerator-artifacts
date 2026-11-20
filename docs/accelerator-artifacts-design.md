@@ -11,7 +11,7 @@ vendors/
   ascend/
     npu-exporter/
       README.md
-      LICENSING.md
+      LICENSE
       component.toml
       Makefile
       standalone.patch
@@ -20,12 +20,12 @@ vendors/
   hygon/
     hcu-device-plugin/
       README.md
-      LICENSING.md
+      LICENSE
       component.toml
       Makefile
     hcu-exporter/
       README.md
-      LICENSING.md
+      LICENSE
       component.toml
       Makefile
 ```
@@ -48,7 +48,7 @@ kind = "app-image"
 approved_version = "v1.2.3"
 ```
 
-组件 README 记录官方获取和安装方式。`LICENSING.md` 按版本列出每个产物的再分发依据和交付义务。许可待确认时仍可本地和 CI 打包。正式发布要求清单内每个产物的 `approved_version` 都等于本次发布版本。
+组件 README 记录官方获取和安装方式。`LICENSE` 保留对应版本的上游许可证原文。正式发布要求清单内每个产物的 `approved_version` 都等于本次发布版本。
 
 ## 构建约定
 
@@ -65,12 +65,12 @@ approved_version = "v1.2.3"
 
 从已合入 `main` 的提交创建 `release/<vendor>/<component>/<version>` tag。一次发布覆盖该组件版本的全部产物。同一组件的发布串行，不同组件可并行。在 `main` 手动重试时输入原发布 tag，仍使用该 tag 的配方。
 
-设 `BASE` 为 `ghcr.io/dynamia-ai/accelerator-artifacts/<vendor>/<component>`。
-
 | 产物 | GHCR 引用 |
 | --- | --- |
-| 运行镜像 | `${BASE}/images/<artifact>:<version>` |
-| OCI Helm Chart | `oci://${BASE}/charts/<artifact>`，以 Helm 的 `--version` 选择版本 |
+| 应用镜像 | `ghcr.io/dynamia-ai/<vendor>/<artifact>:<version>` |
+| OCI Helm Chart | `oci://ghcr.io/dynamia-ai/<vendor>/charts/<artifact>`，以 Helm 的 `--version` 选择版本 |
+
+路径末段使用 `component.toml` 中的产物名。单产物组件使用组件名作为产物名。公开 CI 和发布流程检查不同组件是否声明了相同的 GHCR 包路径。
 
 发布前准备全部产物，将 Chart 归档的成员顺序和时间戳规范化，再检查目标版本。已经存在且内容一致的产物可复用。内容不同或查询出错时中止。Skopeo 按 digest 保真复制镜像，Helm 推送 Chart，Actions 摘要记录各产物的引用与 OCI digest。已发布的产物在后续步骤失败时可通过同一 tag 重试。仅原仓库受保护的发布 job 有 GHCR 写权限，PR 检查只准备本地产物。 [Helm OCI 规范](https://helm.sh/docs/topics/registries/) · [Skopeo 复制选项](https://github.com/containers/skopeo/blob/main/docs/skopeo-copy.1.md)
 
@@ -78,7 +78,7 @@ approved_version = "v1.2.3"
 
 | 厂商 | 规划组件与产物 | 接入条件 |
 | --- | --- | --- |
-| 海光 HCU | `hygon/hcu-device-plugin`、`hygon/hcu-exporter`，各 1 个应用镜像 | 首版配方使用各自的官方 `v3.0.2` Docker 镜像包。确认各成品及随包运行库的公开再分发条款后启用发布。 [Device Plugin Release](https://github.com/HYGON-AI/k8s-hcu-device-plugin/releases/tag/v3.0.2) · [Exporter Release](https://github.com/HYGON-AI/hcu-exporter/releases/tag/v3.0.2) |
+| 海光 HCU | `hygon/hcu-device-plugin`、`hygon/hcu-exporter`，各 1 个应用镜像 | 使用各自的官方 `v3.0.2` Docker 镜像包。 [Device Plugin Release](https://github.com/HYGON-AI/k8s-hcu-device-plugin/releases/tag/v3.0.2) · [Exporter Release](https://github.com/HYGON-AI/hcu-exporter/releases/tag/v3.0.2) |
 | 华为昇腾 | `ascend/npu-exporter`，1 个 OCI Helm Chart | 首版单独打包 MindCluster `v26.2.0` 子 Chart。集群从 AscendHub 获取应用镜像。昇腾 Device Plugin 沿用现有 Dynamia 安装入口。 |
 | 天数智芯 | `iluvatar/ix-exporter`、`iluvatar/vgpu-manager`、`iluvatar/ix-device-plugin` | 优先核对 `ix-exporter` 的官方 Chart 与双架构镜像，两类产物各自审核。再评估 HAMi 路径的 vGPU Manager 与独立 Device Plugin。 [IX Exporter Release](https://github.com/Deep-Spark/ix-exporter/releases/tag/v4.3.0) |
 | AMD | `amd/device-metrics-exporter`，官方应用镜像和 Chart 候选 | 核对 ROCm Exporter 成品依赖与分发条款。AMD Device Plugin 沿用 HAMi 社区版本。 [ROCm Exporter Helm 安装](https://instinct.docs.amd.com/projects/device-metrics-exporter/en/latest/installation/kubernetes-helm.html) |
@@ -88,4 +88,4 @@ approved_version = "v1.2.3"
 | NVIDIA、AWS Neuron、平头哥 PPU、Intel | 沿用官方镜像、Chart 或云服务安装入口 | 首版通过现有渠道获取。按明确的分发需求评估具体成品。 |
 | 瀚博、壁仞、太初元碁 | 沿用 HAMi 或厂商安装入口 | 接入前先确认可获取的组件、交付方式与公开分发条件。 |
 
-计划中的厂商在确认首个产物后创建组件目录，由清单自动加入 CI。Hygon 的正式 GitHub Release 由 Renovate 提出版本更新，维护者同时更新归档校验和与许可记录。昇腾按 GitCode 正式发布手动更新源码 commit 与打包补丁。Dependabot 只管理本仓库的工具与 GitHub Actions。
+计划中的厂商在确认首个产物后创建组件目录，由清单自动加入 CI。海光的正式 GitHub Release 由 Renovate 提出版本更新，维护者同时更新归档校验和。昇腾按 GitCode 正式发布手动更新源码 commit 与打包补丁。Dependabot 只管理本仓库的工具与 GitHub Actions。
