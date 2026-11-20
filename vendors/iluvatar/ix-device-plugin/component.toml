@@ -1,0 +1,9 @@
+upstream = "Deep-Spark/ix-device-plugin"
+version = "v4.3.0"
+
+[artifacts.ix-device-plugin]
+kind = "helm-chart"
+approved_version = "v4.3.0"
+
+[artifacts.device-plugin]
+kind = "app-image"

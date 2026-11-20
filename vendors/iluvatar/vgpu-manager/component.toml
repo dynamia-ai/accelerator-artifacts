@@ -1,0 +1,7 @@
+version = "v3.0.10"
+
+[artifacts.iluvatar-vgpu-manager]
+kind = "helm-chart"
+
+[artifacts.gpu-manager]
+kind = "app-image"
