@@ -4,6 +4,8 @@
 
 在 `vendors/<vendor>/<component>/` 添加 `upstream.yaml`，公开 CI 会自动加入该组件的检查任务。按 `repository`、`tag`、`commit` 的顺序连续书写字段。组件提供镜像配方时，同时添加 `Dockerfile`、`build.sh` 和 `platform`。`platform` 写一行支持的平台，例如 `linux/amd64`。通过 `build.sh --check-public` 检查 Dockerfile，公开检查入口只使用可公开的输入。
 
+实际构建使用目标平台对应的原生 runner 和 Docker daemon。寒武纪 `linux/amd64` 构建会先核对 Docker daemon 的平台。平台不符时，切换到原生 amd64 构建环境后再运行。
+
 将 `Public checks passed` 配置为合入所需检查。它汇总仓库级 Python 检查和各组件检查。组件检查失败时，其他组件继续运行。
 
 ## Renovate 接入

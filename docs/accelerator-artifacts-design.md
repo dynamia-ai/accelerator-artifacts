@@ -8,7 +8,7 @@
 
 本文记录首版设计和后续接入条件。已确定的范围包括集中构建、按组件固定上游源码、发现正式 Release 后直接提更新 PR，以及由人工或 Agent 复核。寒武纪作为首个试点，海光作为扩展验证样本。仓库通过 Renovate 配置跟踪组件的正式 Release，托管 App 接入待验证。
 
-上线前需要分别确认三件事。仓库管理员验证 Renovate PR 的签名、DCO 和公开 CI。组件维护者核对寒武纪 SDK 的构建使用许可，以及两份运行库的公开分发许可。发布维护者验证私有暂存、GHCR 包权限和产物流转。寒武纪的本地构建验证可以先于公开发布进行。
+发布设计采用直接构建并推送 GHCR，现有发布 workflow 待迁移。仓库管理员验证 Renovate PR 的签名、DCO 和公开 CI。组件维护者核对实际构建输入的公开来源、适用许可和成品的分发条件。发布维护者验证正式构建、GHCR 包权限和发布记录流程。寒武纪的本地构建验证可以先于公开发布进行。
 
 ## 目录与上游元数据
 
@@ -45,7 +45,7 @@ commit: "02de42d84c4043432f126a265dbb3b37d1c13792"
 - `tag` 是选择的上游版本。首版识别 `vX.Y.Z` 形式的正式 Release，按三个数字比较版本。
 - `commit` 是 tag 最终指向的完整 Git commit SHA。带注释的 tag 也解析到 commit。检出和构建以该 SHA 为准。更新已有版本锁时，公开 CI 会核对 base 的 tag。已锁定的 tag 被删除或移动时，检查失败并报告原 SHA 和上游现状，由维护者复核。
 
-`upstream.yaml` 锁定上游源码。组件维护者在 `README.md` 记录安装入口和支持平台，在构建配方中记录实际使用的工具链、基础镜像、SDK 和补丁。计划公开分发产物的组件使用独立的 `LICENSING.md` 记录许可。依赖优先使用组件自身的锁定文件和校验值。接入只打 tag 或使用其他发布渠道的组件时，再扩展版本发现方式。
+`upstream.yaml` 锁定上游源码。组件维护者在 `README.md` 记录安装入口和支持平台，在构建配方中记录实际使用的工具链、基础镜像、额外的构建输入和补丁。源码树之外的输入记录上游获取入口、版本和校验值。计划公开分发产物的组件使用独立的 `LICENSING.md` 记录许可。依赖优先使用组件自身的锁定文件和校验值。接入只打 tag 或使用其他发布渠道的组件时，再扩展版本发现方式。
 
 ## 新版本直接进入更新 PR
 
@@ -53,26 +53,32 @@ commit: "02de42d84c4043432f126a265dbb3b37d1c13792"
 
 Renovate 发现新版后直接提 PR，由人工或 Agent 复核。PR 描述提供版本对比信息和复核事项。公开 CI 校验候选的正式 Release、tag 和 SHA，并检查升级方向；更新已有版本锁时，同时校验 PR base 的 tag 与 SHA。即使 Renovate 在旧 tag 移动后仍提出更高版本，该 PR 的检查也会失败。组件维护者在合入前复核配方、构建输入和版本适用的许可声明。
 
-Dependabot 每周更新本仓库的 uv 依赖和 GitHub Actions。厂商的工具链、SDK 和基础镜像跟随组件配方，由组件维护者单独审阅。首次 Renovate PR 验证提交签名、DCO 和公开 CI。 [接入与验证步骤](operations.md#renovate-接入) · [Dependency Dashboard](https://docs.renovatebot.com/key-concepts/dashboard/)
+Dependabot 每周更新本仓库的 uv 依赖和 GitHub Actions。厂商的工具链、构建输入和基础镜像跟随组件配方，由组件维护者单独审阅。首次 Renovate PR 验证提交签名、DCO 和公开 CI。 [接入与验证步骤](operations.md#renovate-接入) · [Dependency Dashboard](https://docs.renovatebot.com/key-concepts/dashboard/)
 
 ## 组件检查与发布路由
 
 公开 CI 从目录生成组件矩阵，仓库级 Python 检查单独运行。每个组件检查自己的锁。包含镜像配方的目录同时提供 `Dockerfile`、`build.sh` 和一行 `platform`，例如 `linux/amd64`。`build.sh --check-public` 使用组件自己的公开上下文检查 Dockerfile。矩阵中的组件独立执行，`Public checks passed` 汇总所有检查结果。
 
-发布 tag 使用 `release/<vendor>/<component>/vX.Y.Z`。入口从 tag 解析组件及版本，确认配方来自已审阅的 `main` 提交，并核对适用的许可。受保护的发布 job 校验签名证据。共用发布 workflow 按组件排队，覆盖镜像推送和 Release 记录。独立组件可同时发布。 [并发配置](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
+发布 tag 使用 `release/<vendor>/<component>/vX.Y.Z`。入口从 tag 解析组件及版本，确认配方来自已审阅的 `main` 提交，并核对适用的许可。受保护的发布 job 使用该配方构建镜像并直接推送 GHCR。共用发布 workflow 按组件排队，覆盖构建、镜像推送和 Release 记录。独立组件可同时发布。 [并发配置](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
+
+### 原生架构构建
+
+每个目标平台必须在同架构的原生 runner 上构建。使用 GitHub 托管 runner 时，`linux/amd64` 使用 `ubuntu-26.04`，`linux/arm64` 使用 `ubuntu-26.04-arm`。构建入口核对实际 Docker daemon 的 OS 和 CPU 架构，发现与目标平台不符时立即失败。构建流程禁用 QEMU 等跨架构模拟，缺少原生 runner 时暂停该平台的构建。 [GitHub 托管 runner](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) · [Docker 多平台构建](https://docs.docker.com/build/building/multi-platform/)
+
+支持多个平台的组件为每个目标平台启动单独的原生构建 job。各 job 并行构建、验证镜像，再把各自的 manifest digest 交给汇总 job。汇总 job 按 digest 核对平台，在所有目标平台验证通过后组装 OCI 镜像索引并发布正式版本 tag。寒武纪试点目前只声明 `linux/amd64`，使用原生 amd64 构建；`build.sh --check-public` 执行 Dockerfile 静态检查。
 
 ## 构建、Fork 与发布权限
 
 | 场景 | 允许的操作 |
 | --- | --- |
 | 社区 fork 提 PR | 原仓库通过 `pull_request` 在 GitHub 托管的临时 runner 执行公开检查。`GITHUB_TOKEN` 只读，工作流仅使用公开输入。按仓库配置审批外部贡献者的工作流运行。 |
-| 用户在自己的 fork 运行 | 用户在 fork 的 Actions 页面启用工作流后，可以手动运行公开验证。持有合规 SDK 的用户可以在自己的机器上使用同一份构建配方。 |
+| 用户在自己的 fork 运行 | 用户在 fork 的 Actions 页面启用工作流后，可以手动运行公开验证。用户可按组件文档准备构建输入，并在本地复用同一份配方。 |
 | 上游更新 PR | Renovate 在原仓库创建版本更新 PR。公开 CI 使用只读权限核对版本锁。 |
-| 原仓库正式构建和发布 | 维护者先推送指向 `main` 已审阅提交的项目发布 tag，例如 `release/cambricon/device-plugin/v2.5.0`。授权环境以该 tag 为正式构建入口。GHCR 工作流由 tag 推送触发，也可从 `main` 手动传入 `ref`，重试已存在的项目发布 tag。独立发布 job 使用该组件要求人工审批的 GitHub Environment，镜像推送由该 job 的 `packages: write` 授权。 |
+| 原仓库正式构建和发布 | 维护者先推送指向 `main` 已审阅提交的项目发布 tag，例如 `release/cambricon/device-plugin/v2.5.0`。发布工作流由 tag 推送触发，也可从 `main` 手动传入 `ref`，重试已存在的项目发布 tag。构建与推送 job 使用该组件要求人工审批的 GitHub Environment，通过 `packages: write` 推送至 GHCR。 |
 
-公开的 PR 检查和上游构建使用只读 Git 权限，检出后不保留 Git 凭据。外部 PR 在 `pull_request` 上运行，无 App、暂存镜像或包写入凭据。可公开构建的组件在无发布凭据的 runner 上执行上游代码。这些检查和构建产生的 PR 产物不得进入发布流程。 [GitHub fork 工作流规则](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflows-in-forked-repositories) · [GitHub Actions 安全指南](https://docs.github.com/en/actions/reference/security/secure-use)
+公开的 PR 检查使用只读 Git 权限，检出后不保留 Git 凭据。外部 PR 在 `pull_request` 上运行，只使用公开输入。具备可自动获取的构建输入时，可以在只读 runner 上执行构建验证。正式发布镜像由发布 workflow 从已审阅的配方构建。 [GitHub fork 工作流规则](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflows-in-forked-repositories) · [GitHub Actions 安全指南](https://docs.github.com/en/actions/reference/security/secure-use)
 
-仓库提交、公开 PR 描述、Actions 日志、缓存和产物只使用可公开的内容。私有 SDK、私有镜像地址、客户信息、内部文档和凭据留在授权环境。发布 job 使用原仓库的 `GITHUB_TOKEN` 推送 GHCR 包。包需关联原仓库并允许其 Actions 写入。独立的记录 job 使用 `contents: write` 附加公开记录。 [GitHub Actions 发布镜像](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images) · [GitHub Packages 访问控制](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility)
+仓库提交、公开 PR 描述、Actions 日志、缓存和产物只使用可公开的内容。客户信息、内部文档和凭据留在授权环境。发布 job 使用原仓库的 `GITHUB_TOKEN` 推送 GHCR 包。包需关联原仓库并允许其 Actions 写入。独立的记录 job 使用 `contents: write` 附加公开记录。 [GitHub Actions 发布镜像](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images) · [GitHub Packages 访问控制](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility)
 
 ## 成品许可与分发
 
@@ -82,19 +88,19 @@ Dependabot 每周更新本仓库的 uv 依赖和 GitHub Actions。厂商的工�
 
 发布维护者在推送前核对成品与对应版本的 `LICENSING.md`。声明缺失、覆盖范围与实际产物不符，或公开分发授权待确认时，发布流程阻止推送到 GHCR。随成品按适用条款提供 `LICENSE`、`NOTICE`、第三方声明及所需源码。修改上游文件时，按其许可证保留版权声明并标注修改。 [Apache-2.0 再分发条款](https://apache.org/licenses/LICENSE-2.0.html#redistribution)
 
-需要私有 SDK 的组件在授权环境中按项目发布 tag 构建，再上传成品到私有暂存仓库。构建证据记录构建身份、tag 指向的配方 commit 和镜像 digest。发布 job 核对这些证据和分发授权，按 digest 向 GHCR 推送。镜像目标由组件标识推导。寒武纪镜像发布到 `ghcr.io/dynamia-ai/accelerator-artifacts/cambricon/device-plugin`。打开私有暂存通道前，发布维护者需要验证它的访问范围、产物来源和凭据隔离。
+发布 job 核对分发条件后，按项目发布 tag 的配方和固定的上游输入构建镜像，使用 `docker buildx build --push` 直接推送至 GHCR。镜像目标由组件标识推导，镜像 tag 使用上游版本。寒武纪试点发布到 `ghcr.io/dynamia-ai/accelerator-artifacts/cambricon/device-plugin:v2.5.0`。需要同步已获准再分发的上游成品镜像时，使用 `skopeo copy --all --preserve-digests` 按源 digest 复制到 GHCR。
 
-使用 `skopeo copy --all --preserve-digests` 同步私有暂存镜像或获准再分发的上游成品镜像。发布 job 只校验和转移镜像，不执行上游代码。首次推送的 GHCR 包默认是私有的。维护者确认成品许可后，可将包设为公开。核对目标 digest、镜像平台和匿名拉取后，记录 job 将版本记录附加到使用已有 Git tag 的 GitHub Release。GitHub Release 可以先保留为草稿，附加记录后再公开。下游可通过记录中的公开镜像引用和 digest 获取成品。 [GHCR 包可见性](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#pushing-container-images)
+首次推送的 GHCR 包默认是私有的。维护者确认成品许可后，可将包设为公开。需要在正式版本 tag 生效前验证远端镜像时，可以先推到同一包的临时 tag，验证后为同一 digest 设置正式版本 tag。包公开后，临时 tag 同样可匿名拉取，推送前也需满足分发条件。核对正式版本的 digest、镜像平台和匿名拉取后，记录 job 将版本记录附加到使用已有 Git tag 的 GitHub Release。GitHub Release 可以先保留为草稿，附加记录后再公开。下游可通过记录中的公开镜像引用和 digest 获取成品。 [GHCR 包可见性](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#pushing-container-images)
 
-发布与记录步骤核对项目 tag、许可、配方及本次使用的发布程序是否仍符合 `main` 上的版本。发布程序发生变化时，从最新 `main` 手动传入同一个项目发布 tag。workflow 执行这次 `main` 的发布代码，证据和发布记录继续使用 tag 指向的原配方 SHA。组件配方或许可发生变化时，维护者复核后另行处理。
+发布与记录步骤核对项目 tag、许可、配方及本次使用的发布程序是否仍符合 `main` 上的版本。发布程序发生变化时，从最新 `main` 手动传入同一个项目发布 tag。workflow 执行这次 `main` 的发布代码，构建和发布记录仍使用 tag 指向的配方 SHA。已推送的版本先核验现有镜像和配方，再补齐 Release 记录。发现镜像与已核验的发布产物不一致时停止，由维护者复核。
 
 记录包括组件标识、上游仓库、tag、源码 SHA、`accelerator-artifacts` 构建配方 commit（成品同步时记录原镜像引用和 digest）、目标镜像引用、目标 manifest 或镜像索引 digest、各平台及其 manifest digest、验证时间、对应构建配方 commit 下的 `LICENSING.md` 链接和安装入口。
 
 ## 寒武纪试点
 
-寒武纪 `v2.5.0` 的上游项目源码采用 Apache-2.0。其安装说明要求从驱动包取得 `cndev.h` `6.5.24`，该文件未包含在所选版本的源码树中。Dockerfile 还会将 `libcndev.so` 和 `libcntopo.so` 复制到最终镜像。寒武纪组件的 `LICENSING.md` 分别记录插件源码许可、构建时获取和使用 SDK 的许可，以及两份运行库随镜像在 GHCR 公开分发的许可。后两项需要分别核对。 [寒武纪源码许可证](https://github.com/Cambricon/cambricon-k8s-device-plugin/blob/v2.5.0/LICENSE) · [上游构建说明](https://github.com/Cambricon/cambricon-k8s-device-plugin/blob/v2.5.0/device-plugin/README.md) · [上游 Dockerfile](https://github.com/Cambricon/cambricon-k8s-device-plugin/blob/v2.5.0/device-plugin/Dockerfile)
+寒武纪 Device Plugin `v2.5.0` 源码采用 Apache-2.0。上游构建说明要求从配套驱动包取得 `cndev.h` `6.5.24`。构建脚本默认从 Neuware 安装路径读取 `libcndev.so` 和 `libcntopo.so`，Dockerfile 将两份运行库打入最终镜像。这三个文件由源码树之外的软件包提供。组件维护者在 `LICENSING.md` 记录实际使用版本的来源、许可及镜像再分发条件。 [寒武纪源码许可证](https://github.com/Cambricon/cambricon-k8s-device-plugin/blob/v2.5.0/LICENSE) · [上游构建说明](https://github.com/Cambricon/cambricon-k8s-device-plugin/blob/v2.5.0/device-plugin/README.md) · [上游构建脚本](https://github.com/Cambricon/cambricon-k8s-device-plugin/blob/v2.5.0/device-plugin/build_image.sh) · [上游 Dockerfile](https://github.com/Cambricon/cambricon-k8s-device-plugin/blob/v2.5.0/device-plugin/Dockerfile)
 
-试点先验证 fork PR 能跑公开检查、源码锁定可核对，以及构建配方能分别指出缺少的头文件或运行库。持有合规 SDK 的维护者在受控环境构建镜像，验证 `linux/amd64` 平台、入口文件与两份运行库。首次 Renovate PR 核对版本差异、PR 描述、签名、DCO 和公开 CI。设备注册需要在配套 MLU 宿主机上验证。GHCR 发布安排在成品分发权限确认之后。
+试点先验证 fork PR 能跑公开检查、源码锁定可核对，以及构建配方能分别指出缺少的头文件或运行库。维护者使用经核对的构建输入验证 `linux/amd64` 镜像、入口文件和两份运行库。首次 Renovate PR 核对版本差异、PR 描述、签名、DCO 和公开 CI。设备注册需要在配套 MLU 宿主机上验证。GHCR 发布安排在成品分发条件确认之后。
 
 海光验证同一厂商下的组件独立跟踪。HCU Device Plugin 和 HCU Exporter 在 `v3.0.2` 对应不同的 Release、源码 SHA 和发布资产。两者各自通过 `go.mod` 固定 `hcu-dcgm/v3`。首版版本检查跟踪两条组件 Release，共享依赖由维护者随组件升级复核。当前两个 Dockerfile 从宿主机使用 HyHAL 运行库，组件接入时在 `README.md` 记录适用的 HyHAL 版本和挂载路径。计划公开分发时，在 `LICENSING.md` 记录上游第三方声明和宿主机提供的依赖。 [HCU Device Plugin Release](https://github.com/HYGON-AI/k8s-hcu-device-plugin/releases/tag/v3.0.2) · [HCU Exporter Release](https://github.com/HYGON-AI/hcu-exporter/releases/tag/v3.0.2) · [hcu-dcgm 第三方声明](https://github.com/HYGON-AI/hcu-dcgm/blob/v3.0.2/THIRD_PARTY_NOTICES.md)
 
@@ -104,4 +110,4 @@ Dependabot 每周更新本仓库的 uv 依赖和 GitHub Actions。厂商的工�
 
 - 初始化 PR 包含仓库说明、许可证和贡献规则。签名、DCO、独立 worktree 以及公开推送和建 PR 的授权约定纳入贡献规则。
 - 寒武纪试点 PR 加入目录、上游元数据、许可声明、构建配方和公开检查。公开检查有可用结果后，再配置为合入的必需检查。
-- 自动更新与正式发布分开启用。Renovate 接入需完成分支保护、App 安装、签名、DCO 和 PR CI 验证。正式发布需完成成品分发授权、私有暂存和 GHCR 权限验证。
+- 自动更新与正式发布分开启用。Renovate 接入需完成分支保护、App 安装、签名、DCO 和 PR CI 验证。正式发布需核对成品分发条件、验证构建与 GHCR 权限。

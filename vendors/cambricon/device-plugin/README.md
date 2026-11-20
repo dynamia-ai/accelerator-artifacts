@@ -4,7 +4,7 @@
 
 ## 在授权环境构建
 
-使用 uv、隔离的 Docker daemon 和 Buildx。uv 从仓库的 `.python-version` 读取构建脚本使用的 Python 版本。将下列输入留在工作区外，并将各环境变量设为对应文件的绝对路径。
+使用 uv、Buildx，以及运行在原生 x86-64 主机上的隔离 Linux Docker daemon。构建脚本会核对 daemon 是否为 `linux/amd64`，平台不匹配时停止构建。uv 从仓库的 `.python-version` 读取构建脚本使用的 Python 版本。将下列输入留在工作区外，并将各环境变量设为对应文件的绝对路径。
 
 | 环境变量 | 文件 |
 | --- | --- |

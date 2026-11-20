@@ -675,6 +675,39 @@ class RecipeTests(unittest.TestCase):
         for name in ["CAMBRICON_CNDEV_HEADER", "CAMBRICON_LIBCNDEV", "CAMBRICON_LIBCNTOPO"]:
             self.assertIn(name, result.stderr)
 
+    def test_build_requires_a_matching_native_docker_daemon(self):
+        build = (ROOT / lock_path(COMPONENT)).with_name("build.sh")
+        with tempfile.TemporaryDirectory() as directory:
+            docker = Path(directory) / "docker"
+            docker.write_text(
+                "#!/bin/bash\n"
+                'test "$1" = info || exit 42\n'
+                'test -n "$MOCK_DAEMON_PLATFORM" || exit 1\n'
+                "printf '%s\\n' \"$MOCK_DAEMON_PLATFORM\"\n"
+            )
+            docker.chmod(0o755)
+            for daemon, expected in (
+                ("linux/x86_64", "CAMBRICON_CNDEV_HEADER"),
+                ("linux/amd64", "CAMBRICON_CNDEV_HEADER"),
+                ("linux/aarch64", "Build requires a native linux/amd64 Docker worker"),
+                ("windows/x86_64", "Build requires a native linux/amd64 Docker worker"),
+                ("", "Cannot verify the Docker daemon platform"),
+            ):
+                with self.subTest(daemon=daemon):
+                    result = subprocess.run(
+                        ["bash", str(build), "--build"],
+                        env={
+                            "PATH": f"{directory}{os.pathsep}{os.environ['PATH']}",
+                            "CAMBRICON_AUTHORIZED_BUILD": "1",
+                            "MOCK_DAEMON_PLATFORM": daemon,
+                        },
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    self.assertEqual(result.returncode, 1)
+                    self.assertIn(expected, result.stderr)
+
     def test_only_external_amd64_inputs_pass_and_public_ci_cannot_build(self):
         recipe = ROOT / lock_path(COMPONENT)
         path = recipe.with_name("build.sh")

@@ -20,9 +20,25 @@ if [[ "$mode" == --check-public ]]; then
     exit 0
 fi
 
-if [[ "$mode" == --build && ( "${CAMBRICON_AUTHORIZED_BUILD:-}" != 1 || "${GITHUB_ACTIONS:-}" == true ) ]]; then
-    echo 'Build requires an authorized environment and CAMBRICON_AUTHORIZED_BUILD=1.' >&2
-    exit 1
+if [[ "$mode" == --build ]]; then
+    if [[ "${CAMBRICON_AUTHORIZED_BUILD:-}" != 1 || "${GITHUB_ACTIONS:-}" == true ]]; then
+        echo 'Build requires an authorized environment and CAMBRICON_AUTHORIZED_BUILD=1.' >&2
+        exit 1
+    fi
+
+    # The new docker-container builder runs on this daemon, whose architecture can differ from the CLI host.
+    if ! native_platform="$(docker info --format '{{.OSType}}/{{.Architecture}}' 2>/dev/null)"; then
+        printf 'Cannot verify the Docker daemon platform. Select a native %s worker.\n' "$platform" >&2
+        exit 1
+    fi
+    case "$native_platform" in
+        linux/x86_64) native_platform=linux/amd64 ;;
+        linux/aarch64) native_platform=linux/arm64 ;;
+    esac
+    if [[ "$native_platform" != "$platform" ]]; then
+        printf 'Build requires a native %s Docker worker (daemon reports %s).\n' "$platform" "$native_platform" >&2
+        exit 1
+    fi
 fi
 
 # Keep SDK inputs external, even when a supplied path is a symlink.
