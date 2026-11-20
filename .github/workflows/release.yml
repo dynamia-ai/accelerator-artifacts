@@ -1,0 +1,100 @@
+name: Publish accelerator artifacts
+on:
+  push:
+    tags: ['release/*/*/v*']
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Existing release/<vendor>/<component>/<version> tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: Resolve release tag
+    if: >-
+      github.repository == 'dynamia-ai/accelerator-artifacts'
+      && ((github.event_name == 'push' && !github.event.deleted)
+          || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      component: ${{ steps.tag.outputs.component }}
+      commit: ${{ steps.tag.outputs.commit }}
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - id: tag
+        env:
+          REQUESTED_REF: ${{ github.event_name == 'push' && github.ref || inputs.ref }}
+        run: |
+          tag=${REQUESTED_REF#refs/tags/}
+          slug='[a-z0-9]+(-[a-z0-9]+)*'
+          if [[ ! "$tag" =~ ^release/($slug/$slug)/v[0-9]+(\.[0-9]+){2,3}$ ]]; then
+            echo "Expected release/<vendor>/<component>/<version>" >&2
+            exit 1
+          fi
+          component=${BASH_REMATCH[1]}
+          commit=$(git rev-parse --verify "refs/tags/$tag^{commit}")
+          git merge-base --is-ancestor "$commit" HEAD
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            test "$commit" = "$(git rev-parse "${GITHUB_SHA}^{commit}")"
+          fi
+          {
+            echo "component=$component"
+            echo "commit=$commit"
+            echo "tag=$tag"
+          } >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Publish ${{ needs.resolve.outputs.component }}
+    needs: resolve
+    concurrency:
+      group: publish-${{ needs.resolve.outputs.component }}
+      queue: max
+    environment: public-ghcr
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version-file: .python-version
+      - name: Require publication opt-in
+        env:
+          GHCR_PUBLISH_ENABLED: ${{ vars.GHCR_PUBLISH_ENABLED }}
+        run: |
+          if [[ "$GHCR_PUBLISH_ENABLED" != true ]]; then
+            echo "Set GHCR_PUBLISH_ENABLED in the protected public-ghcr environment" >&2
+            exit 1
+          fi
+      - name: Install Skopeo
+        run: |
+          if ! command -v skopeo >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends skopeo
+          fi
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          authfile="$RUNNER_TEMP/ghcr-auth.json"
+          printf '%s' "$GHCR_TOKEN" | skopeo login --authfile "$authfile" --username "$GITHUB_ACTOR" --password-stdin ghcr.io
+          printf 'REGISTRY_AUTH_FILE=%s\nHELM_REGISTRY_CONFIG=%s\n' "$authfile" "$authfile" >> "$GITHUB_ENV"
+      - name: Prepare and publish component artifacts
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: python3 scripts/components.py publish "$RELEASE_TAG" --summary "$GITHUB_STEP_SUMMARY"

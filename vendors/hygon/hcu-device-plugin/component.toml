@@ -1,0 +1,5 @@
+upstream = "HYGON-AI/k8s-hcu-device-plugin"
+version = "v3.0.2"
+
+[artifacts.hcu-device-plugin]
+kind = "app-image"

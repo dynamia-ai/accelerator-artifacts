@@ -1,0 +1,5 @@
+upstream = "HYGON-AI/hcu-exporter"
+version = "v3.0.2"
+
+[artifacts.hcu-exporter]
+kind = "app-image"

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "enabledManagers": [
+    "custom.regex"
+  ],
+  "automerge": false,
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^vendors/[^/]+/[^/]+/component\\.toml$/"
+      ],
+      "matchStrings": [
+        "(?:^|\\r?\\n)upstream = \"(?<depName>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)\"\\r?\\nversion = \"(?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "versioningTemplate": "regex:^v(?<major>0|[1-9][0-9]*)\\.(?<minor>0|[1-9][0-9]*)\\.(?<patch>0|[1-9][0-9]*)$"
+    }
+  ],
+  "platformCommit": "enabled",
+  "commitTrailers": [
+    "Signed-off-by: renovate[bot] <29139614+renovate[bot]@users.noreply.github.com>"
+  ],
+  "prBodyNotes": [
+    "Update the pinned upstream artifacts and their checksums.",
+    "Review the new artifacts and record version-specific redistribution approval before release."
+  ]
+}
