@@ -4,7 +4,7 @@
 
 | 厂商 | 组件 | 产物与状态 |
 | --- | --- | --- |
-| 海光 HCU | [Device Plugin](vendors/hygon/hcu-device-plugin/README.md)、[Exporter](vendors/hygon/hcu-exporter/README.md) | 各 1 个应用镜像。配方使用官方 `v3.0.2` 镜像包，公开再分发待确认。 |
+| 海光 HCU | [Device Plugin](vendors/hygon/hcu-device-plugin/README.md)、[Exporter](vendors/hygon/hcu-exporter/README.md) | 各 1 个应用镜像，使用官方 `v3.0.2` 镜像包。 |
 | 华为昇腾 | [NPU Exporter](vendors/ascend/npu-exporter/README.md) | 1 个 OCI Helm Chart。配方使用 MindCluster `v26.2.0` 子 Chart，集群直接从 AscendHub 拉取镜像。 |
 | 寒武纪 MLU | [Device Plugin 与 MLU Exporter](vendors/cambricon/README.md) | 官方构建和安装入口。 |
 

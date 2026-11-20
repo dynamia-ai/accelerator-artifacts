@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-REGISTRY = "ghcr.io/dynamia-ai/accelerator-artifacts"
+REGISTRY = "ghcr.io/dynamia-ai"
 TARGETS = {"app-image": "app", "helm-chart": "chart"}
 SLUG = r"[a-z0-9]+(?:-[a-z0-9]+)*"
 VERSION = r"v(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){2,3}"
@@ -36,11 +36,18 @@ class Component:
     artifacts: tuple[Artifact, ...]
 
 
+def package_repository(selected: Component, artifact: Artifact) -> str:
+    vendor, _ = selected.name.split("/")
+    if artifact.kind == "helm-chart":
+        return f"{REGISTRY}/{vendor}/charts/{artifact.name}"
+    return f"{REGISTRY}/{vendor}/{artifact.name}"
+
+
 def component(name: str) -> Component:
     if not re.fullmatch(rf"{SLUG}/{SLUG}", name):
         raise ValueError(f"Invalid component name: {name}")
     directory = ROOT / "vendors" / name
-    for filename in ("README.md", "LICENSING.md", "Makefile", "component.toml"):
+    for filename in ("README.md", "LICENSE", "Makefile", "component.toml"):
         if not (directory / filename).is_file():
             raise ValueError(f"{name}: missing {filename}")
 
@@ -82,14 +89,27 @@ def inventory():
         for file in ("component.toml", "Makefile")
         for path in vendors.glob(f"*/*/{file}")
     }
-    return [component(path.relative_to(vendors).as_posix()) for path in sorted(paths)]
+    components = [component(path.relative_to(vendors).as_posix()) for path in sorted(paths)]
+    owners = {}
+    for selected in components:
+        for artifact in selected.artifacts:
+            repository = package_repository(selected, artifact)
+            if repository in owners:
+                raise ValueError(
+                    f"{repository}: declared by {owners[repository]} and {selected.name}"
+                )
+            owners[repository] = selected.name
+    return components
 
 
 def release_component(tag: str) -> Component:
     match = RELEASE.fullmatch(tag.removeprefix("refs/tags/"))
     if not match:
         raise ValueError("Expected release/<vendor>/<component>/<version>")
-    selected = component(match["component"])
+    name = match["component"]
+    selected = next((item for item in inventory() if item.name == name), None)
+    if selected is None:
+        raise ValueError(f"{tag}: unknown component {name}")
     if selected.version != match["version"]:
         raise ValueError(f"{tag}: the component declares {selected.version}")
     pending = [
@@ -223,13 +243,13 @@ def publish(selected: Component, directory: Path) -> list[str]:
     publications = []
     for artifact in selected.artifacts:
         path = output(selected, artifact, directory)
-        base = f"{REGISTRY}/{selected.name}"
+        repository = package_repository(selected, artifact)
         if artifact.kind == "app-image":
             source = image_source(path)
             raw = manifest(source)
             publications.append(
                 Publication(
-                    f"{base}/images/{artifact.name}",
+                    repository,
                     selected.version,
                     artifact.kind,
                     source,
@@ -239,7 +259,7 @@ def publish(selected: Component, directory: Path) -> list[str]:
         else:
             publications.append(
                 Publication(
-                    f"{base}/charts/{artifact.name}",
+                    repository,
                     selected.version[1:],
                     artifact.kind,
                     str(path),

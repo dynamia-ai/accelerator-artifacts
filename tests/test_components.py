@@ -5,7 +5,7 @@ import tarfile
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from scripts import components
 
@@ -33,7 +33,7 @@ class ComponentTests(unittest.TestCase):
         self.enterContext(patch.object(components, "ROOT", self.root))
         self.directory = self.root / "vendors/vendor/component"
         self.directory.mkdir(parents=True)
-        for filename in ("Makefile", "README.md", "LICENSING.md"):
+        for filename in ("Makefile", "README.md", "LICENSE"):
             (self.directory / filename).touch()
         self.config = self.directory / "component.toml"
         self.config.write_text(MIXED)
@@ -43,6 +43,63 @@ class ComponentTests(unittest.TestCase):
         readme.parent.mkdir()
         readme.touch()
         self.assertEqual([item.name for item in components.inventory()], ["vendor/component"])
+
+    def test_release_rejects_package_path_shared_by_two_components(self):
+        other = self.directory.parent / "other"
+        other.mkdir()
+        for filename in ("Makefile", "README.md", "LICENSE"):
+            (other / filename).touch()
+        (other / "component.toml").write_text(MIXED)
+
+        with self.assertRaisesRegex(
+            ValueError, "vendor/charts/install: declared by vendor/component and vendor/other"
+        ):
+            components.release_component("release/vendor/component/v1.2.3")
+
+    def test_publish_uses_vendor_namespace_and_artifact_names(self):
+        selected = components.release_component("release/vendor/component/v1.2.3")
+        directory = self.root / "outputs"
+        chart = directory / "install" / "install-1.2.3.tgz"
+        chart.parent.mkdir(parents=True)
+        chart.write_bytes(b"chart file")
+
+        with (
+            patch.object(components, "image_source", return_value="docker://example.com/image"),
+            patch.object(components, "manifest", return_value=b"image manifest"),
+            patch.object(
+                components.Publication,
+                "inspect",
+                side_effect=lambda *, allow_missing=False: (
+                    None if allow_missing else "sha256:published"
+                ),
+            ),
+            patch.object(components, "run") as command,
+            patch("builtins.print"),
+        ):
+            components.publish(selected, directory)
+
+        self.assertEqual(
+            command.call_args_list,
+            [
+                call("helm", "push", str(chart), "oci://ghcr.io/dynamia-ai/vendor/charts"),
+                call(
+                    "skopeo",
+                    "copy",
+                    "--all",
+                    "--preserve-digests",
+                    "docker://example.com/image",
+                    "docker://ghcr.io/dynamia-ai/vendor/main:v1.2.3",
+                ),
+                call(
+                    "skopeo",
+                    "copy",
+                    "--all",
+                    "--preserve-digests",
+                    "docker://example.com/image",
+                    "docker://ghcr.io/dynamia-ai/vendor/sidecar:v1.2.3",
+                ),
+            ],
+        )
 
     def test_mixed_component_runs_one_make_target_per_kind(self):
         component = components.component("vendor/component")

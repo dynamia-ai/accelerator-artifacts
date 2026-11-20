@@ -11,7 +11,7 @@ chart:
 		--output "$$tmp/source.tgz" "https://codeload.github.com/Ascend/mind-cluster/tar.gz/$(UPSTREAM_COMMIT)"; \
 	root="mind-cluster-$(UPSTREAM_COMMIT)"; \
 	tar -xzf "$$tmp/source.tgz" -C "$$tmp" --strip-components=1 \
-		"$$root/LICENSE" "$$root/component/npu-exporter/build" \
+		"$$root/component/npu-exporter/build" \
 		"$$root/helm-deploy-tool/build" "$$root/helm-deploy-tool/app/values.yaml" \
 		"$$root/helm-deploy-tool/app/charts/npu-exporter"; \
 	deploy="$$tmp/helm-deploy-tool"; \
@@ -22,8 +22,7 @@ chart:
 	python3 "$$deploy/build/replace_yaml_values.py" --version "$(VERSION)" "$$deploy/app/charts"; \
 	PARENT_VALUES="$$deploy/app/values.yaml" yq -i 'load(strenv(PARENT_VALUES))."npu-exporter" as $$parent | .image = $$parent.image | .is310P1usoc = $$parent.is310P1usoc' "$$chart/values.yaml"; \
 	patch -d "$$chart" -p1 < standalone.patch; \
-	cp "$$tmp/LICENSE" "$$chart/"; \
-	cp LICENSING.md "$$chart/REDISTRIBUTION.md"; \
+	cp LICENSE "$$chart/"; \
 	helm lint --strict "$$chart"; \
 	expected_image=$$(yq -r '.image.repository + ":" + .image.tag' "$$chart/values.yaml"); \
 	for mode in false true; do \
