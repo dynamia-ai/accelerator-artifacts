@@ -3,3 +3,4 @@ version = "v3.0.2"
 
 [artifacts.hcu-device-plugin]
 kind = "app-image"
+approved_version = "v3.0.2"
