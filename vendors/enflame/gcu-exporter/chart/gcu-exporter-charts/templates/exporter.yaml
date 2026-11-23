@@ -1,0 +1,92 @@
+{{- /* Dynamia adapted Enflame's v3.6.5 amd64 and arm64 DaemonSet and Service manifests. */}}
+{{- $architecture := .Values.architecture }}
+{{- if not (has $architecture (list "amd64" "arm64")) }}
+{{- fail "architecture must be amd64 or arm64" }}
+{{- end }}
+{{- $name := printf "gcu-%s" .Release.Name }}
+{{- $labels := dict "app.kubernetes.io/name" "gcu-exporter" "app.kubernetes.io/instance" .Release.Name }}
+{{- $efml := ternary "/usr/lib/libefml-arm.so" "/usr/lib/libefml.so" (eq $architecture "arm64") }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ $name }}
+  labels: {{- toYaml $labels | nindent 4 }}
+spec:
+  selector:
+    matchLabels: {{- toYaml $labels | nindent 6 }}
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels: {{- toYaml $labels | nindent 8 }}
+    spec:
+      hostNetwork: true
+      nodeSelector: {{- toYaml (merge (dict "kubernetes.io/arch" $architecture) .Values.nodeSelector) | nindent 8 }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: gcu-exporter
+          image: {{ printf "%s:%s" .Values.image.repository (default .Chart.AppVersion .Values.image.tag) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            privileged: true
+          ports:
+            - name: metrics
+              protocol: TCP
+              containerPort: 9400
+              hostPort: 9400
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: syspath
+              mountPath: /sys
+            - name: localtime
+              mountPath: /etc/localtime
+            - name: varlock
+              mountPath: /var/lock
+            - name: pod-resources
+              mountPath: /var/lib/kubelet/pod-resources
+            - name: libefml
+              mountPath: /usr/lib/libefml.so
+            - name: libefml-real
+              mountPath: /usr/local/efsmi
+      volumes:
+        - name: syspath
+          hostPath:
+            path: /sys
+        - name: localtime
+          hostPath:
+            path: /etc/localtime
+        - name: varlock
+          hostPath:
+            path: /var/lock
+        - name: pod-resources
+          hostPath:
+            path: /var/lib/kubelet/pod-resources
+        - name: libefml
+          hostPath:
+            path: {{ default $efml .Values.efmlHostPath | quote }}
+            type: File
+        - name: libefml-real
+          hostPath:
+            path: /usr/local/efsmi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- toYaml $labels | nindent 4 }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: /metrics
+    prometheus.io/port: "9400"
+spec:
+  type: {{ .Values.service.type }}
+  selector: {{- toYaml $labels | nindent 4 }}
+  ports:
+    - name: metrics
+      port: 9400
+      targetPort: metrics

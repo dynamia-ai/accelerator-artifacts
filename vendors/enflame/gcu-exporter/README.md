@@ -10,9 +10,29 @@
 python3 -m unittest discover -s vendors/enflame/gcu-exporter
 ```
 
-官方 Release 提供源码归档。Exporter 部署示例和 GCU Operator 分别引用厂商仓库的 `latest` 和 `default`。匿名 Skopeo 查询均在仓库域名解析阶段失败，成品的固定版本、digest 和镜像架构待厂商确认。Exporter 的 x86 和 ARM 部署示例使用同一镜像引用。 [Exporter 部署说明](https://github.com/EnflameTechnology/gcu-exporter/blob/a83264c908916e94480a42cddcd0615c56def9e6/deployments/README.md) · [Operator DaemonSet](https://github.com/EnflameTechnology/k8s-operator/blob/073e86d77c8a288d198117a6049755145acc23ce/enflame-resources/gcu-exporter/gcu-exporter-ds.yaml)
+官方 `v3.6.5` Release 提供源码归档，固定提交提供各架构的独立 Kubernetes YAML。GCU Operator 在自己的源码中维护 Exporter 资源。Exporter 部署示例和 Operator 分别引用厂商仓库的 `latest` 和 `default`。对厂商仓库的匿名查询未能读取镜像清单，成品的固定版本、digest 和架构待厂商确认。 [官方 Release](https://github.com/EnflameTechnology/gcu-exporter/releases/tag/v3.6.5) · [固定版本部署目录](https://github.com/EnflameTechnology/gcu-exporter/tree/a83264c908916e94480a42cddcd0615c56def9e6/deployments) · [Operator DaemonSet](https://github.com/EnflameTechnology/k8s-operator/blob/073e86d77c8a288d198117a6049755145acc23ce/enflame-resources/gcu-exporter/gcu-exporter-ds.yaml)
 
-## 部署到 Kubernetes
+## 使用 Helm 部署
+
+本仓库根据上游特权 DaemonSet 和 Service 清单打包独立 Chart。目标节点需要配套 GCU 驱动和 EFML。DaemonSet 使用宿主机网络并占用 `9400/TCP`。如果 GCU Operator 已在目标节点部署 Exporter，继续使用 Operator 的监控入口。 [x86 清单](https://github.com/EnflameTechnology/gcu-exporter/blob/a83264c908916e94480a42cddcd0615c56def9e6/deployments/yaml/gcu-exporter.yaml) · [ARM 清单](https://github.com/EnflameTechnology/gcu-exporter/blob/a83264c908916e94480a42cddcd0615c56def9e6/deployments/yaml/gcu-exporter-for-arm.yaml)
+
+默认镜像是已发布的 Linux amd64 镜像 `ghcr.io/dynamia-ai/enflame/gcu-exporter:v3.6.5`。从仓库根目录打包并安装。将示例的 `accelerator=enflame-gcu` 替换为集群用于标记 GCU 节点的标签。
+
+```bash
+make -C vendors/enflame/gcu-exporter chart
+helm upgrade --install enflame-amd64 \
+	./vendors/enflame/gcu-exporter/dist/gcu-exporter-charts/gcu-exporter-charts-3.6.5.tgz \
+	--namespace kube-system \
+	--set-string nodeSelector.accelerator=enflame-gcu
+```
+
+在 ARM64 节点安装时，将 release 名改为 `enflame-arm64`，设置 `architecture=arm64`，并用 `image.repository` 和 `image.tag` 指定集群可拉取的 ARM64 镜像。混合架构集群为两种架构分别安装，Chart 按配置选择节点。若镜像仓库需要认证，在安装命名空间准备拉取 Secret 并设置 `imagePullSecrets[0].name`。 [已发布镜像](https://github.com/dynamia-ai/accelerator-artifacts/pkgs/container/enflame%2Fgcu-exporter)
+
+Chart 将节点的 EFML 库挂到容器内 `/usr/lib/libefml.so`。amd64 节点默认从 `/usr/lib/libefml.so` 读取，arm64 节点默认从 `/usr/lib/libefml-arm.so` 读取。驱动使用其他路径时设置 `efmlHostPath`。保留宿主机的 `/usr/local/efsmi`，供 EFML 库及其依赖使用。 [EFML 加载逻辑](https://github.com/EnflameTechnology/gcu-exporter/blob/a83264c908916e94480a42cddcd0615c56def9e6/vendor/go-eflib/efml/efml_dl.go)
+
+Prometheus 可按 Service 注解发现 `9400/TCP` 的 `/metrics`。Chart 发布后可通过 `oci://ghcr.io/dynamia-ai/enflame/charts/gcu-exporter-charts` 和 `--version 3.6.5` 安装。
+
+## 使用上游 YAML 部署
 
 在节点上安装配套 GCU 驱动。按节点架构选择厂商的 DaemonSet 清单，将容器镜像替换为集群可拉取的同架构镜像。 [x86 清单](https://github.com/EnflameTechnology/gcu-exporter/blob/a83264c908916e94480a42cddcd0615c56def9e6/deployments/yaml/gcu-exporter.yaml) · [ARM 清单](https://github.com/EnflameTechnology/gcu-exporter/blob/a83264c908916e94480a42cddcd0615c56def9e6/deployments/yaml/gcu-exporter-for-arm.yaml)
 
@@ -35,9 +55,9 @@ python3 -m unittest discover -s vendors/enflame/gcu-exporter
 
 ## 分发说明
 
-自建镜像仍待发布审批。 [上游许可证原文](LICENSE)
+自建镜像随附上游声明，并提供与构建输入对应的源码包。 [上游许可证原文](LICENSE) · [源码交付说明](SOURCES.md)
 
 `gcu-exporter` 源码和源码归档内的 `go-eflib` 绑定采用 Apache License 2.0。按适用许可证履行义务后，可以再分发受该许可覆盖的源码和编译产物。镜像在 `/usr/share/doc/gcu-exporter/` 保留上游 `LICENSE`、`LICENSE.md`、`NOTICE`、Go 许可和源码归档中的第三方许可文件。`go-eflib` 绑定编译进 Exporter，EFML 运行库由节点的厂商驱动提供。 [上游许可证](https://github.com/EnflameTechnology/gcu-exporter/blob/a83264c908916e94480a42cddcd0615c56def9e6/LICENSE) · [上游 NOTICE](https://github.com/EnflameTechnology/gcu-exporter/blob/a83264c908916e94480a42cddcd0615c56def9e6/NOTICE) · [go-eflib 许可证](https://github.com/EnflameTechnology/gcu-exporter/blob/a83264c908916e94480a42cddcd0615c56def9e6/vendor/go-eflib/LICENSE)
 
-- **本仓库构建的 OCI 镜像**待发布审核。按实际链接的 Go 依赖及固定的 Debian 基础镜像核对许可证、版权通知和适用的源码提供义务，再记录 `approved_version`。如修改上游文件，按 Apache License 2.0 标注改动。
+- **本仓库构建的 OCI 镜像**通过 GitHub Release 提供固定的 Exporter 源码归档、Debian 基础镜像内的对应源码包及构建配方。镜像标签和 OCI 许可附件都指向该 Release。
 - **厂商成品镜像**待厂商确认。官方公开源码的许可证覆盖源码及其衍生作品，成品里的基础镜像、第三方软件和随包运行库各有条款。取得固定镜像及其内容清单后，按镜像核对再分发授权和交付义务。 [厂商镜像配置](https://github.com/EnflameTechnology/gcu-exporter/blob/a83264c908916e94480a42cddcd0615c56def9e6/deployments/build-image.conf)

@@ -1,0 +1,8 @@
+apiVersion: v2
+name: gcu-exporter-charts
+description: Deploys the Enflame GCU metrics exporter
+type: application
+version: 3.6.5
+appVersion: v3.6.5
+sources:
+  - https://github.com/EnflameTechnology/gcu-exporter

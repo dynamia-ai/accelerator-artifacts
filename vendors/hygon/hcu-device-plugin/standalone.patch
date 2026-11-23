@@ -1,0 +1,98 @@
+--- a/k8s-hcu-plugin/templates/daemonset.yaml
++++ b/k8s-hcu-plugin/templates/daemonset.yaml
+@@ -1,3 +1,4 @@
++{{/* Dynamia adapted this template for the packaged Chart. */}}
+ {{/*
+ SPDX-License-Identifier: Apache-2.0
+ Copyright 2026 Hygon Information Technology Co., Ltd.
+@@ -19,6 +20,7 @@
+         name: hcu-dp-ds
+       {{- include "k8s-hcu-plugin.selectorLabels" . | nindent 8 }}
+     spec:
++      nodeSelector: {{- toYaml .Values.hcuDevicePlugin.nodeSelector | nindent 8 }}
+       affinity:
+         nodeAffinity:
+           requiredDuringSchedulingIgnoredDuringExecution:
+@@ -36,6 +38,9 @@
+                 operator: NotIn
+                 values:
+                 - "on"
++      {{- with .Values.imagePullSecrets }}
++      imagePullSecrets: {{- toYaml . | nindent 8 }}
++      {{- end }}
+       containers:
+       - env:
+         - name: PULSE
+--- a/k8s-hcu-plugin-hami/templates/daemonset.yaml
++++ b/k8s-hcu-plugin-hami/templates/daemonset.yaml
+@@ -1,3 +1,4 @@
++{{/* Dynamia adapted this template for the packaged Chart. */}}
+ {{/*
+ SPDX-License-Identifier: Apache-2.0
+ Copyright 2026 Hygon Information Technology Co., Ltd.
+@@ -5,7 +6,7 @@
+ apiVersion: apps/v1
+ kind: DaemonSet
+ metadata:
+-  name: hcu-device-plugin
++  name: hcu-device-plugin-hami
+   labels:
+   {{- include "k8s-hcu-plugin-hami.labels" . | nindent 4 }}
+ spec:
+@@ -19,6 +20,9 @@
+         name: hcu-dp-ds-hami
+       {{- include "k8s-hcu-plugin-hami.selectorLabels" . | nindent 8 }}
+     spec:
++      {{- with .Values.imagePullSecrets }}
++      imagePullSecrets: {{- toYaml . | nindent 8 }}
++      {{- end }}
+       containers:
+       - env:
+         - name: PULSE
+--- a/k8s-hcu-plugin-mig/templates/daemonset.yaml
++++ b/k8s-hcu-plugin-mig/templates/daemonset.yaml
+@@ -1,3 +1,4 @@
++{{/* Dynamia adapted this template for the packaged Chart. */}}
+ {{/*
+ SPDX-License-Identifier: Apache-2.0
+ Copyright 2026 Hygon Information Technology Co., Ltd.
+@@ -21,6 +22,9 @@
+       annotations:
+         scheduler.alpha.kubernetes.io/critical-pod: ""
+     spec:
++      {{- with .Values.imagePullSecrets }}
++      imagePullSecrets: {{- toYaml . | nindent 8 }}
++      {{- end }}
+       containers:
+       - env:
+         - name: PULSE
+--- a/k8s-hcu-plugin-hami/templates/hcu-device-plugin-rbac.yaml
++++ b/k8s-hcu-plugin-hami/templates/hcu-device-plugin-rbac.yaml
+@@ -1,3 +1,4 @@
++{{/* Dynamia adapted this template to match the release manifest RBAC. */}}
+ {{/*
+ SPDX-License-Identifier: Apache-2.0
+ Copyright 2026 Hygon Information Technology Co., Ltd.
+@@ -33,9 +34,22 @@
+   verbs:
+   - update
+   - patch
++  - delete
+   - get
+   - list
+   - watch
++- apiGroups:
++  - ""
++  resources:
++  - configmaps
++  verbs:
++  - get
++  - list
++  - watch
++  - create
++  - update
++  - patch
++  - delete
+ ---
+ apiVersion: rbac.authorization.k8s.io/v1
+ kind: ClusterRoleBinding

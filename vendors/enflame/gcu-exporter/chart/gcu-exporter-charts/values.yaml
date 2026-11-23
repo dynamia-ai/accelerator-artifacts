@@ -1,0 +1,25 @@
+image:
+  repository: ghcr.io/dynamia-ai/enflame/gcu-exporter
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# Choose the image and the default EFML path for this node architecture.
+architecture: amd64
+# Additional selectors for nodes with an installed GCU driver.
+nodeSelector: {}
+tolerations: []
+
+# Set this when the installed driver uses a different host library path.
+efmlHostPath: ""
+
+resources:
+  requests:
+    memory: 100Mi
+    cpu: 100m
+  limits:
+    memory: 2000Mi
+    cpu: 2000m
+
+service:
+  type: NodePort

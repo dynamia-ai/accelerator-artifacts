@@ -58,13 +58,13 @@ curl -fsS http://127.0.0.1:5000/metrics
 
 ## 分发说明
 
-Chart 和镜像均待发布审批。 [上游许可证原文](LICENSE)
+Chart 可按产物单独发布。运行镜像继续使用 Docker Hub 上的厂商来源。 [上游许可证原文](LICENSE)
 
-v1.5.3 的 Chart 已获准单独发布；v1.5.4 的 Chart 和镜像均待发布审批。
+v1.5.4 的 Chart 已获准单独发布；镜像仍待发布审批。
 
 v1.5.4 官方 Chart 归档 `device-metrics-exporter-charts-v1.5.4.tgz` 的 SHA-256 为 `dcdabdab16d0de03aec2c492e5b95646e16f59c5205361aae73e3d20745c578a`；官方镜像 tag `docker.io/rocm/device-metrics-exporter:v1.5.4` 对应 `linux/amd64`，manifest digest 为 `sha256:435f01bb20470c905f65e5fa09756210030a96fd6c9c17ab1a0c4fb5cda9185c`。本目录的 `LICENSE` 与上游 v1.5.4 许可证一致。 [官方 Chart 索引](https://rocm.github.io/device-metrics-exporter/index.yaml) · [AMD Docker Hub](https://hub.docker.com/r/rocm/device-metrics-exporter/tags) · [上游许可证](https://github.com/ROCm/device-metrics-exporter/blob/v1.5.4/LICENSE)
 
-以下审核记录针对 v1.5.3，不作为 v1.5.4 的再分发批准。
+以下审核记录针对 v1.5.3。
 
 ### Helm Chart
 
@@ -78,4 +78,4 @@ Dynamia 将 `Chart.yaml` 的 `version` 从 `v1.5.3` 改为 `1.5.3` 以符合 OCI
 
 - 镜像附带的 `/licenses/LICENSE` 与 Exporter 上游 Apache-2.0 文本一致。上游构建配方使用的 GPU Agent 源码也采用 Apache-2.0。镜像标注的构建修订 `f354e3d450169972cb1f8df64acae506d96d4c49` 在公开 Exporter 仓库无法解析，正式源码标签指向 `3b3c7f0bd5c0ec0bf00b9960d1b736258b7190eb`。 [Exporter 源码许可](https://github.com/ROCm/device-metrics-exporter/blob/v1.5.3/LICENSE) · [GPU Agent 源码许可](https://github.com/ROCm/gpu-agent/blob/bcae57f9b395363f3340ad0b7393659b7df13f37/LICENSE)
 - 镜像层包含 Red Hat UBI 9 Minimal 9.8、额外安装的 RPM、GPU Agent、ROCm 10.1.0 库和第三方库。抽查确认了 AMD SMI 27.1.0、HIP、HSA Runtime、AQLprofile、ROCprofiler-SDK、rocRAND、ROCm 打包的 MPFR，以及较早层中的 AMD SMI 26.5.0。镜像内可见 AMD SMI 的 MIT 许可和 MPFR 的 GPL、LGPL 文本。RPM 数据库也记录了 Bash 的 GPL 许可及其源码 RPM 名称。 [ROCm 10.1.0 组件许可](https://rocm.docs.amd.com/en/docs-10.1.0/about/license.html) · [Red Hat UBI 分发条款说明](https://developers.redhat.com/articles/ubi-faq)
-- 公开镜像发布需补齐与此 digest 对应的组件、源码及许可清单，核对额外 RPM 的 UBI 来源，确认各层的第三方声明、对应源码和其他交付义务。当前清单中的 Chart 和镜像均待审核，组件发布检查会拦截此版本。
+- 公开镜像发布需补齐与此 digest 对应的组件、源码及许可清单，核对额外 RPM 的 UBI 来源，确认各层的第三方声明、对应源码和其他交付义务。此检查范围为完整的运行镜像。

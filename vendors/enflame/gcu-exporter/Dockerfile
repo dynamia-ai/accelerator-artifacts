@@ -30,7 +30,8 @@ FROM docker.io/library/debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca0
 ARG EXPORTER_VERSION
 LABEL org.opencontainers.image.source="https://github.com/EnflameTechnology/gcu-exporter" \
     org.opencontainers.image.revision="a83264c908916e94480a42cddcd0615c56def9e6" \
-    org.opencontainers.image.version="$EXPORTER_VERSION"
+    org.opencontainers.image.version="$EXPORTER_VERSION" \
+    org.opencontainers.image.documentation="https://github.com/dynamia-ai/accelerator-artifacts/releases/tag/release%2Fenflame%2Fgcu-exporter%2Fv3.6.5"
 
 COPY --from=build /src/gcu-exporter /usr/bin/gcu-exporter
 COPY --from=build /licenses/ /usr/share/doc/gcu-exporter/

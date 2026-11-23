@@ -17,7 +17,7 @@ kubectl -n kube-system rollout status daemonset/ix-exporter
 
 ## 分发说明
 
-Chart 已记录版本审批，组件发布仍待运行镜像审核。 [上游许可证原文](LICENSE)
+Chart 可按产物单独发布。运行镜像继续使用厂商来源。 [上游许可证原文](LICENSE)
 
 ### Helm Chart
 

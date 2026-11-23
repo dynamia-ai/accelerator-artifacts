@@ -2,3 +2,8 @@ version = "v3.6.5"
 
 [artifacts.gcu-exporter]
 kind = "app-image"
+approved_version = "v3.6.5"
+
+[artifacts.gcu-exporter-charts]
+kind = "helm-chart"
+approved_version = "v3.6.5"

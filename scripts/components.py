@@ -10,7 +10,7 @@ import subprocess
 import tarfile
 import tempfile
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,7 +18,9 @@ REGISTRY = "ghcr.io/dynamia-ai"
 TARGETS = {"app-image": "app", "helm-chart": "chart"}
 SLUG = r"[a-z0-9]+(?:-[a-z0-9]+)*"
 VERSION = r"v(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){2,3}"
-RELEASE = re.compile(rf"release/(?P<component>{SLUG}/{SLUG})/(?P<version>{VERSION})")
+RELEASE = re.compile(
+    rf"release/(?P<component>{SLUG}/{SLUG})/(?P<version>{VERSION})(?:-artifact-(?P<artifact>{SLUG}))?"
+)
 CHART_LAYER = "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
 
 
@@ -106,13 +108,22 @@ def inventory():
 def release_component(tag: str) -> Component:
     match = RELEASE.fullmatch(tag.removeprefix("refs/tags/"))
     if not match:
-        raise ValueError("Expected release/<vendor>/<component>/<version>")
+        raise ValueError("Expected release/<vendor>/<component>/<version>[-artifact-<name>]")
     name = match["component"]
     selected = next((item for item in inventory() if item.name == name), None)
     if selected is None:
         raise ValueError(f"{tag}: unknown component {name}")
     if selected.version != match["version"]:
         raise ValueError(f"{tag}: the component declares {selected.version}")
+
+    if artifact_name := match["artifact"]:
+        artifacts = tuple(
+            artifact for artifact in selected.artifacts if artifact.name == artifact_name
+        )
+        if not artifacts:
+            raise ValueError(f"{name}: unknown artifact {artifact_name}")
+        selected = replace(selected, artifacts=artifacts)
+
     pending = [
         artifact.name
         for artifact in selected.artifacts

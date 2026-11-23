@@ -34,3 +34,5 @@
 ## 腾讯云 TKE 安装入口
 
 在腾讯云容器服务 TKE 中，通过集群组件管理安装 `xpu-gpu`。该组件通过 `xpu-device-plugin-daemonset` 注册 XPU 资源，并通过 `xpu-exporter` 采集指标。TKE 集群须运行 Kubernetes 1.16 或更高版本。组件仅部署在已安装昆仑芯驱动和 XRE、带有 `kunlun-device-enable=enable` 标签的 `amd64` XPU 节点上。 [腾讯云 TKE XPU 组件说明](https://cloud.tencent.com/document/product/457/138230) · [TKE 组件管理](https://cloud.tencent.com/document/product/457/81234)
+
+TKE 文档列出随 `xpu-gpu` 一起配置的 Chart 参数，安装入口为 TKE 组件管理。`xpu-exporter` 的默认指标端口为 `9507/TCP`。若已覆盖 `config.exporterPort`，使用配置的端口抓取指标。上文的 DCXM Exporter `1.0.0.1` 通过独立 Docker 容器运行，使用 `9400/TCP`。 [TKE Chart 参数](https://cloud.tencent.com/document/product/457/138230) · [新华三 DCXM 容器安装说明](https://www.h3c.com/cn/d_202608/2893801_30005_0.htm#_Toc237009705)
