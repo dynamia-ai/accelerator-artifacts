@@ -4,3 +4,15 @@ version = "v3.0.2"
 [artifacts.hcu-device-plugin]
 kind = "app-image"
 approved_version = "v3.0.2"
+
+[artifacts.k8s-hcu-plugin]
+kind = "helm-chart"
+approved_version = "v3.0.2"
+
+[artifacts.k8s-hcu-plugin-hami]
+kind = "helm-chart"
+approved_version = "v3.0.2"
+
+[artifacts.k8s-hcu-plugin-mig]
+kind = "helm-chart"
+approved_version = "v3.0.2"

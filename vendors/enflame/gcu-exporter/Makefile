@@ -1,8 +1,10 @@
 include ../../../scripts/component.mk
 
 BUILDKIT_IMAGE := docker.io/moby/buildkit:buildx-stable-1@sha256:baf6138eb8c37644800c7c913fba051e840ebb9ba13eaf92d92ef9a1712d0b4c
+CHART_ARTIFACT := gcu-exporter-charts
+CHART_VERSION := $(patsubst v%,%,$(VERSION))
 
-.PHONY: app
+.PHONY: app chart
 app:
 ifneq ($(origin VERSION),file)
 	$(error Set the gcu-exporter version in component.toml)
@@ -27,3 +29,20 @@ endif
 		skopeo copy --preserve-digests "oci-archive:$$tmp/image.tar" "$$source"; \
 		{ cat LICENSE; printf '\n'; cat SOURCES.md; } > "$$out/LICENSE"; \
 		printf '%s\n' "$$source" > "$$out/image-source"
+
+chart:
+	@set -euo pipefail; \
+	tmp=$$(mktemp -d); \
+	trap 'rm -rf "$$tmp"' EXIT; \
+	cp -R "chart/$(CHART_ARTIFACT)" "$$tmp/"; \
+	chart="$$tmp/$(CHART_ARTIFACT)"; \
+	cp LICENSE "$$chart/"; \
+	helm lint --strict "$$chart"; \
+	helm template gcu-exporter "$$chart" --set architecture=arm64 | \
+		yq eval-all -e 'select(.kind == "DaemonSet") | .spec.template.spec | \
+			[(.nodeSelector."kubernetes.io/arch" == "arm64"), \
+			(.volumes | map(select(.name == "libefml")) | .[0].hostPath.path == "/usr/lib/libefml-arm.so"), \
+			(.containers[0].volumeMounts | map(select(.name == "libefml")) | .[0].mountPath == "/usr/lib/libefml.so")] | all' - >/dev/null; \
+	mkdir -p "$(OUT)/$(CHART_ARTIFACT)"; \
+	helm package "$$chart" --version "$(CHART_VERSION)" --app-version "$(VERSION)" \
+		--destination "$(OUT)/$(CHART_ARTIFACT)"

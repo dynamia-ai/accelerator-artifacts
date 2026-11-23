@@ -8,7 +8,7 @@
 
 从开发者门户登录并下载 KUAE 云原生套件 v2.1.0。Core 模式使用包内 `GPU-Operator/gpu-operator-core/deployments.yaml` 同时部署 Device Plugin 和 `mtgpu-exporter`。按安装指南准备驱动和 MT Container Toolkit，并为目标 GPU 节点设置 `mthreads.com/gpu=enable` 标签。部署后从 `mt-gpu-operator` 命名空间中的 `mtgpu-exporter` 服务抓取 `9445/TCP` 的 `/metrics`。 [v2.1.0 下载页](https://developer.mthreads.com/resources/artifacts/sdk-arti-00002) · [v2.1.0 安装指南](https://docs.mthreads.com/cloud-native/cloud-native-doc-online/history_version/v2.1.0/install_guide/#k8s集群部署device-plugin和mtgpu-exporter组件)
 
-Full 模式的 `mt-gpu-operator-2.1.0.tgz` 和 `mt-gpu-operator-custom-resources-2.1.0.tgz` 用于安装 Operator 和自定义资源。官方公开文件清单未列出独立的 Exporter Chart，单独部署可从 Core 模式的清单核对 Exporter 的配置。下载页要求登录，随包清单和 Chart 的实际内容尚未核验。 [v2.1.0 安装包文件清单](https://docs.mthreads.com/cloud-native/cloud-native-doc-online/history_version/v2.1.0/releasenote/#文件描述)
+Full 模式的 `mt-gpu-operator-2.1.0.tgz` 和 `mt-gpu-operator-custom-resources-2.1.0.tgz` 用于安装 Operator 和自定义资源。官方公开文件清单未列出独立的 Exporter Chart。下载页要求登录，本仓库尚未取得 Core 模式的 `deployments.yaml`，因此无法核对单独部署所需的宿主机挂载、运行时配置和权限。 [v2.1.0 安装包文件清单](https://docs.mthreads.com/cloud-native/cloud-native-doc-online/history_version/v2.1.0/releasenote/#文件描述)
 
 ## KUAE v2.2.0 监控与 Device Plugin
 
