@@ -18,6 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
@@ -31,9 +32,21 @@ jobs:
           uv run --locked ruff format --check scripts tests
           uv run --locked python -m unittest discover -s tests
           bash -n scripts/import-image.sh
-      - id: inventory
+      - name: Select components to check
+        id: inventory
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && 'HEAD^1' || github.event.before }}
         run: |
-          components=$(python3 scripts/components.py matrix)
+          # For pull requests, compare the checked-out merge commit with its base parent.
+          args=()
+          if [[ -n "$BASE" ]]; then
+            if git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+              args+=(--changed-from "$BASE")
+            else
+              echo "::notice::Diff base unavailable. Checking all components."
+            fi
+          fi
+          components=$(python3 scripts/components.py matrix "${args[@]}")
           echo "components=$components" >> "$GITHUB_OUTPUT"
 
   build:

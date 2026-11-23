@@ -22,6 +22,12 @@ RELEASE = re.compile(
     rf"release/(?P<component>{SLUG}/{SLUG})/(?P<version>{VERSION})(?:-artifact-(?P<artifact>{SLUG}))?"
 )
 CHART_LAYER = "application/vnd.cncf.helm.chart.content.v1.tar+gzip"
+SHARED_CHECK_FILES = {
+    ".github/workflows/public-checks.yml",
+    ".python-version",
+    "pyproject.toml",
+    "uv.lock",
+}
 
 
 @dataclass(frozen=True)
@@ -85,12 +91,13 @@ def component(name: str) -> Component:
     return Component(name, directory, version, tuple(result))
 
 
-def inventory():
+def inventory(selected_vendors: set[str] | None = None) -> list[Component]:
     vendors = ROOT / "vendors"
     paths = {
         path.parent
         for file in ("component.toml", "Makefile")
         for path in vendors.glob(f"*/*/{file}")
+        if selected_vendors is None or path.parent.parent.name in selected_vendors
     }
     components = [component(path.relative_to(vendors).as_posix()) for path in sorted(paths)]
     owners = {}
@@ -143,6 +150,31 @@ def output(selected: Component, artifact: Artifact, directory: Path) -> Path:
 
 def run(*args: str, **kwargs):
     return subprocess.run(args, check=True, **kwargs)
+
+
+def matrix(base: str | None) -> list[str]:
+    selected_vendors = None
+    if base is not None:
+        # A move between vendors must select both the old and the new vendor.
+        changed = run(
+            "git",
+            "diff",
+            "--name-only",
+            "-z",
+            "--no-renames",
+            "--end-of-options",
+            base,
+            "HEAD",
+            "--",
+            cwd=ROOT,
+            capture_output=True,
+        )
+        paths = os.fsdecode(changed.stdout).split("\0")
+        if not any(path.startswith("scripts/") or path in SHARED_CHECK_FILES for path in paths):
+            selected_vendors = {
+                path.split("/", 2)[1] for path in paths if path.startswith("vendors/")
+            }
+    return [item.name for item in inventory(selected_vendors)]
 
 
 def image_source(path: Path) -> str:
@@ -325,7 +357,10 @@ def publish(selected: Component, directory: Path) -> list[str]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("matrix")
+    check_matrix = commands.add_parser("matrix")
+    check_matrix.add_argument(
+        "--changed-from", help="Select vendors changed between this ref and HEAD"
+    )
     check = commands.add_parser("build")
     check.add_argument("component")
     release = commands.add_parser("publish")
@@ -335,7 +370,7 @@ def main() -> None:
 
     try:
         if args.command == "matrix":
-            print(json.dumps([item.name for item in inventory()]))
+            print(json.dumps(matrix(args.changed_from)))
             return
         selected = (
             component(args.component) if args.command == "build" else release_component(args.tag)

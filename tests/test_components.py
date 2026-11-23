@@ -1,5 +1,6 @@
 import io
 import json
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -43,6 +44,45 @@ class ComponentTests(unittest.TestCase):
         readme.parent.mkdir()
         readme.touch()
         self.assertEqual([item.name for item in components.inventory()], ["vendor/component"])
+
+    def matrix_for_paths(self, *paths):
+        names = b"".join(path.encode() + b"\0" for path in paths)
+        with patch.object(
+            components, "run", return_value=subprocess.CompletedProcess([], 0, names)
+        ):
+            return components.matrix("base")
+
+    def test_matrix_checks_all_components_of_the_changed_vendor(self):
+        sibling = shutil.copytree(self.directory, self.directory.with_name("sibling"))
+        (sibling / "component.toml").write_text(MIXED.replace("[artifacts.", "[artifacts.sibling-"))
+        unrelated = self.root / "vendors/unrelated/broken"
+        unrelated.mkdir(parents=True)
+        (unrelated / "Makefile").touch()
+
+        self.assertEqual(
+            self.matrix_for_paths("vendors/vendor/artifacts.mk"),
+            ["vendor/component", "vendor/sibling"],
+        )
+
+    def test_matrix_combines_changed_vendors(self):
+        shutil.copytree(self.directory, self.root / "vendors/another/component")
+
+        self.assertEqual(
+            self.matrix_for_paths("vendors/vendor/old", "vendors/another/new"),
+            ["another/component", "vendor/component"],
+        )
+
+    def test_matrix_skips_builds_without_affected_components(self):
+        self.assertEqual(self.matrix_for_paths("README.md", "vendors/cambricon/README.md"), [])
+
+    def test_shared_build_changes_override_vendor_selection(self):
+        shutil.copytree(self.directory, self.root / "vendors/another/component")
+        for shared in ("scripts/component.mk", ".github/workflows/public-checks.yml", "uv.lock"):
+            with self.subTest(shared=shared):
+                self.assertEqual(
+                    self.matrix_for_paths("vendors/vendor/README.md", shared),
+                    ["another/component", "vendor/component"],
+                )
 
     def test_component_without_license_file_is_discoverable(self):
         (self.directory / "LICENSE").unlink()

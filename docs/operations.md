@@ -4,7 +4,9 @@
 
 在 `vendors/<vendor>/<component>/` 添加 `component.toml`、`Makefile` 和 `README.md`。上游提供 `LICENSE` 文件时保留原文。清单声明组件版本、产物名和各产物类型。Makefile 为 `app-image` 实现 `app`，为 `helm-chart` 实现 `chart`。同一目标准备该类型的全部产物。 [产物输出约定](accelerator-artifacts-design.md#构建约定)
 
-使用 `uv run --locked python scripts/components.py build <vendor>/<component>` 按 CI 的方式准备并检查组件产物。公开 CI 自动发现组件，每个组件运行独立任务。将 `Public checks passed` 设为合入所需的检查。
+使用 `uv run --locked python scripts/components.py build <vendor>/<component>` 按 CI 的方式准备并检查组件产物。
+
+公开 CI 在 PR 和推送到 `main` 时，按变更涉及的 `vendors/<vendor>/` 目录检查这些厂商的全部组件，每个组件运行独立任务。修改共享脚本、Python 环境配置或公开检查工作流时，CI 检查全部组件。手动运行工作流也会检查全部组件。每次运行都会执行仓库工具检查并汇报 `Public checks passed`，将其设为合入所需的检查。
 
 ## 更新上游版本
 
