@@ -5,4 +5,4 @@
 两个组件的 `v2.5.0` 源码均含可独立渲染的 Helm Chart。默认镜像名分别为 `cambricon-device-plugin:2.5.0` 和 `cambricon-mlu-exporter:2.5.0`，未指定镜像仓库。Release 未附加镜像或打包后的 Chart。匿名查询 Docker Hub 默认路径均返回访问拒绝。取得配套驱动包后，按官方说明构建镜像，并在安装时填写 `image.repository` 和 `image.tag`。
 
 - [Device Plugin 官方构建与安装说明](https://github.com/Cambricon/cambricon-k8s-device-plugin/blob/02de42d84c4043432f126a265dbb3b37d1c13792/device-plugin/README.md) · [Device Plugin Chart](https://github.com/Cambricon/cambricon-k8s-device-plugin/tree/02de42d84c4043432f126a265dbb3b37d1c13792/device-plugin/deploys/helm/device-plugin)
-- [MLU Exporter 官方构建与安装说明](https://github.com/Cambricon/mlu-exporter/blob/d87439dc6aba9c1f4fb11d916706c6338058a714/README.md) · [MLU Exporter Chart](https://github.com/Cambricon/mlu-exporter/tree/d87439dc6aba9c1f4fb11d916706c6338058a714/depolys/helm/mlu-exporter)
+- 从 MLU Exporter 源码根目录安装时，使用 `depolys/helm/mlu-exporter` 作为 Chart 路径。 [MLU Exporter 官方构建与安装说明](https://github.com/Cambricon/mlu-exporter/blob/d87439dc6aba9c1f4fb11d916706c6338058a714/README.md) · [MLU Exporter Chart](https://github.com/Cambricon/mlu-exporter/tree/d87439dc6aba9c1f4fb11d916706c6338058a714/depolys/helm/mlu-exporter)
