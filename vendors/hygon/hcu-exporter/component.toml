@@ -4,3 +4,7 @@ version = "v3.0.2"
 [artifacts.hcu-exporter]
 kind = "app-image"
 approved_version = "v3.0.2"
+
+[artifacts.hcu-exporter-charts]
+kind = "helm-chart"
+approved_version = "v3.0.2"
