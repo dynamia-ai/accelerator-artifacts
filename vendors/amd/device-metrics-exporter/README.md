@@ -1,12 +1,12 @@
 # AMD Device Metrics Exporter
 
-本组件使用 ROCm `v1.5.3` 的官方 GPU Exporter 镜像和独立 Helm Chart。AMD Device Plugin 沿用 HAMi 社区版本。 [ROCm Release](https://github.com/ROCm/device-metrics-exporter/releases/tag/v1.5.3) · [制品分发状态](#分发说明)
+本组件使用 ROCm `v1.5.4` 的官方 GPU Exporter 镜像和独立 Helm Chart。AMD Device Plugin 沿用 HAMi 社区版本。 [ROCm Release](https://github.com/ROCm/device-metrics-exporter/releases/tag/v1.5.4) · [制品分发状态](#分发说明)
 
 ## 从 AMD 官方 Helm 仓库安装
 
-- Kubernetes 1.29.0 或更高版本、Helm 3.2.0 或更高版本，以及可访问集群的 `kubectl`。GPU 节点使用 `linux/amd64`。宿主机系统按 AMD 指南使用 Ubuntu 22.04 或更高版本，或 SUSE Linux Enterprise Server 15、16。 [AMD Helm 安装说明](https://github.com/ROCm/device-metrics-exporter/blob/v1.5.3/docs/installation/kubernetes-helm.md)
-- 宿主机须加载 AMDGPU 驱动。MI2xx、MI3xx 使用 ROCm 6.2 或更高版本，MI350P、Radeon AI 使用 ROCm 7.13 或更高版本。 [v1.5.3 硬件支持](https://github.com/ROCm/device-metrics-exporter/releases/tag/v1.5.3)
-- DaemonSet 的 init 容器和 Exporter 容器均以特权模式运行，需要允许宿主机路径挂载。init 容器从宿主机 `/sys` 检查 KFD 和 AMDGPU 驱动。Exporter 挂载 `/dev`、`/sys` 和 kubelet 的 PodResources 目录。如 kubelet 使用非默认目录，设置 `kubelet.podResourceAPISocketPath`。 [上游 DaemonSet 模板](https://github.com/ROCm/device-metrics-exporter/blob/v1.5.3/helm-charts/templates/daemonsets.yaml)
+- Kubernetes 1.29.0 或更高版本、Helm 3.2.0 或更高版本，以及可访问集群的 `kubectl`。GPU 节点使用 `linux/amd64`。宿主机系统按 AMD 指南使用 Ubuntu 22.04 或更高版本，或 SUSE Linux Enterprise Server 15、16。 [AMD Helm 安装说明](https://github.com/ROCm/device-metrics-exporter/blob/v1.5.4/docs/installation/kubernetes-helm.md)
+- 宿主机须加载 AMDGPU 驱动。MI2xx、MI3xx 使用 ROCm 6.2 或更高版本，MI350P、Radeon AI 使用 ROCm 7.13 或更高版本。 [v1.5.4 硬件支持](https://github.com/ROCm/device-metrics-exporter/releases/tag/v1.5.4)
+- DaemonSet 的 init 容器和 Exporter 容器均以特权模式运行，需要允许宿主机路径挂载。init 容器从宿主机 `/sys` 检查 KFD 和 AMDGPU 驱动。Exporter 挂载 `/dev`、`/sys` 和 kubelet 的 PodResources 目录。如 kubelet 使用非默认目录，设置 `kubelet.podResourceAPISocketPath`。 [上游 DaemonSet 模板](https://github.com/ROCm/device-metrics-exporter/blob/v1.5.4/helm-charts/templates/daemonsets.yaml)
 
 异构集群按以下示例创建 `amd-gpu-values.yaml`，同时匹配 AMD GPU 节点标签和 `amd64` 架构。将 `example.com/accelerator` 及其值替换为集群实际使用的 AMD GPU 节点标签。若目标节点有 `NoSchedule` 或 `NoExecute` 污点，按实际的污点键、值和 effect 配置对应的 `tolerations`。目标节点没有需要容忍的污点时可省略 `tolerations`。
 
@@ -25,13 +25,13 @@ tolerations:
 helm repo add rocm-exporter https://rocm.github.io/device-metrics-exporter
 helm repo update
 helm install exporter rocm-exporter/device-metrics-exporter-charts \
-  --version v1.5.3 --namespace kube-amd-gpu --create-namespace \
+  --version v1.5.4 --namespace kube-amd-gpu --create-namespace \
   -f amd-gpu-values.yaml
 ```
 
 如果集群的所有节点都符合部署条件，可省略 `-f amd-gpu-values.yaml`。
 
-默认从 Docker Hub 拉取 `docker.io/rocm/device-metrics-exporter:v1.5.3` 和驱动检查容器 `docker.io/library/busybox:1.36`。如需使用已获准的镜像仓库，分别通过 `image.repository`、`image.tag` 和 `image.initContainerImage` 覆盖。 [上游 Chart 默认值](https://github.com/ROCm/device-metrics-exporter/blob/v1.5.3/helm-charts/values.yaml)
+默认从 Docker Hub 拉取 `docker.io/rocm/device-metrics-exporter:v1.5.4` 和驱动检查容器 `docker.io/library/busybox:1.36`。如需使用已获准的镜像仓库，分别通过 `image.repository`、`image.tag` 和 `image.initContainerImage` 覆盖。 [上游 Chart 默认值](https://github.com/ROCm/device-metrics-exporter/blob/v1.5.4/helm-charts/values.yaml)
 
 ## 检查指标
 
@@ -52,13 +52,19 @@ curl -fsS http://127.0.0.1:5000/metrics
 
 ## 准备本地产物
 
-在本目录运行 `make app` 按固定 digest 读取 Docker Hub 镜像，校验其 digest 和 `linux/amd64` 平台，并生成 `dist/device-metrics-exporter/image-source`。运行 `make chart` 下载并验证 AMD 官方 Chart，生成 `dist/device-metrics-exporter-charts/device-metrics-exporter-charts-1.5.3.tgz`。打包后的 Chart 仍从 Docker Hub 拉取上述两个镜像。
+在本目录运行 `make app` 按固定 digest 读取 Docker Hub 镜像，校验其 digest 和 `linux/amd64` 平台，并生成 `dist/device-metrics-exporter/image-source`。运行 `make chart` 下载并验证 AMD 官方 Chart，生成 `dist/device-metrics-exporter-charts/device-metrics-exporter-charts-1.5.4.tgz`。打包后的 Chart 仍从 Docker Hub 拉取上述两个镜像。
 
-更新组件版本时，用 Skopeo 核对新版本的官方 tag、manifest digest 和平台。在本页的分发说明中记录对应的 digest 和平台，更新上游 `LICENSE`、`component.toml` 的版本以及 Makefile 中的 `APP_VERSION` 和 `APP_DIGEST`。日常构建直接读取已记录的 digest。
+更新组件版本时，用 Skopeo 核对新版本的官方 tag、manifest digest 和平台。在本页的分发说明中记录对应的 digest 和平台，更新上游 `LICENSE`、`component.toml` 的版本以及 Makefile 中的 `APP_VERSION`、`APP_DIGEST` 和 `CHART_SHA256`。日常构建直接读取已记录的 digest。
 
 ## 分发说明
 
 Chart 可按产物单独发布。运行镜像继续使用 Docker Hub 上的厂商来源。 [上游许可证原文](LICENSE)
+
+v1.5.4 的 Chart 已获准单独发布；镜像仍待发布审批。
+
+v1.5.4 官方 Chart 归档 `device-metrics-exporter-charts-v1.5.4.tgz` 的 SHA-256 为 `dcdabdab16d0de03aec2c492e5b95646e16f59c5205361aae73e3d20745c578a`；官方镜像 tag `docker.io/rocm/device-metrics-exporter:v1.5.4` 对应 `linux/amd64`，manifest digest 为 `sha256:435f01bb20470c905f65e5fa09756210030a96fd6c9c17ab1a0c4fb5cda9185c`。本目录的 `LICENSE` 与上游 v1.5.4 许可证一致。 [官方 Chart 索引](https://rocm.github.io/device-metrics-exporter/index.yaml) · [AMD Docker Hub](https://hub.docker.com/r/rocm/device-metrics-exporter/tags) · [上游许可证](https://github.com/ROCm/device-metrics-exporter/blob/v1.5.4/LICENSE)
+
+以下审核记录针对 v1.5.3。
 
 ### Helm Chart
 
