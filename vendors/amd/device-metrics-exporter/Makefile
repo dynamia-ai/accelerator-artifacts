@@ -1,12 +1,12 @@
 include ../../../scripts/component.mk
 
 APP_IMAGE := docker.io/rocm/device-metrics-exporter
-APP_VERSION := v1.5.3
-APP_DIGEST := sha256:bdfc644bb8d4d07d9a0c31dda3e0d463101f48170548c5a7e7f7066c253fa813
+APP_VERSION := v1.5.4
+APP_DIGEST := sha256:435f01bb20470c905f65e5fa09756210030a96fd6c9c17ab1a0c4fb5cda9185c
 APP_SOURCE := docker://$(APP_IMAGE)@$(APP_DIGEST)
 CHART := device-metrics-exporter-charts
 CHART_URL := https://rocm.github.io/device-metrics-exporter/charts/$(CHART)-$(VERSION).tgz
-CHART_SHA256 := c653e9918a1f1d4d2021e775d3e2b3c953d686fcffd55f865e7562f5b76a7634
+CHART_SHA256 := dcdabdab16d0de03aec2c492e5b95646e16f59c5205361aae73e3d20745c578a
 INIT_IMAGE := busybox:1.36
 
 .PHONY: app chart
