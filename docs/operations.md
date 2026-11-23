@@ -10,6 +10,20 @@
 
 更新组件时，设置 `component.toml` 的 `version`，更新构建输入。上游提供 `LICENSE` 文件时，同步为对应版本。发布新版时，按厂商明确列出的条件准备随包材料，并将要发布的产物的 `approved_version` 更新为 `version`。
 
+### 准备 AMD 版本更新
+
+在仓库根目录运行以下命令。需要可用的 `gh`、Skopeo、Helm 和 `yq`。省略 `--version` 时，脚本查询 ROCm 的最新正式 Release。
+
+```bash
+uv run --locked python -m scripts.update_amd prepare --version v1.5.4
+```
+
+脚本解析官方镜像的 `linux/amd64` digest，计算官方 Chart 归档的 SHA-256，并在临时目录运行组件构建检查。检查通过后，脚本更新工作区里的组件版本、Makefile 锁定值和 `LICENSE`，并输出制品来源。镜像或 Chart 尚未发布时，待对应制品可用后重新运行。提交前核对组件 README 中的版本引用和分发说明。
+
+AMD PR 改动镜像仓库、组件版本或 digest 时，公开 CI 核对上游 tag 解析出的 digest。常规构建和发布直接使用已锁定的 digest。
+
+### 更新其他组件
+
 海光组件由 Renovate 跟踪 GitHub 正式 Release。Renovate 只更新清单的 `version`，合入更新 PR 前还需更新 Makefile 中的归档 SHA-256。昇腾组件按 GitCode 的正式版本手动更新清单、源码 commit 和打包补丁。Dependabot 管理本仓库的 uv 依赖与 GitHub Actions。 [Renovate GitHub Releases 数据源](https://docs.renovatebot.com/modules/datasource/github-releases/)
 
 ## 发布到 GHCR
