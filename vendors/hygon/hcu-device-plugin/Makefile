@@ -5,6 +5,18 @@ UPSTREAM_CHARTS := deployment/helm
 CHARTS := k8s-hcu-plugin k8s-hcu-plugin-hami k8s-hcu-plugin-mig
 CHART_VERSION := $(patsubst v%,%,$(VERSION))
 
+CHART_METADATA := .version = strenv(CHART_VERSION) | \
+	.annotations."dynamia.ai/redistribution-changes" = "Dynamia normalized the version for OCI packaging."
+CHART_DEFAULTS := .[strenv(CHART_VALUES_KEY)].hcuDpCntr.image.repository = "ghcr.io/dynamia-ai/hygon/hcu-device-plugin" | \
+	.[strenv(CHART_VALUES_KEY)].nodeSelector."kubernetes.io/arch" = "amd64" | .imagePullSecrets = [] | \
+	(head_comment) as $$existing | . head_comment = ($$existing + "\nDynamia adapted the packaged defaults.")
+CHECK_RENDER := select(.kind == "DaemonSet") | .spec.template.spec | \
+	[(.nodeSelector."kubernetes.io/arch" == "amd64"), \
+	(.containers[0].image == ("ghcr.io/dynamia-ai/hygon/hcu-device-plugin:" + strenv(IMAGE_TAG)))] | all
+CHECK_HAMI_RBAC := select(.kind == "ClusterRole") | .rules | \
+	[(map(select(.resources[] == "pods")) | .[0].verbs | contains(["delete"])), \
+	(map(select(.resources[] == "configmaps")) | .[0].verbs | contains(["get", "create", "patch"]))] | all
+
 .PHONY: app chart
 app:
 	bash ../../../scripts/import-image.sh \
@@ -25,24 +37,16 @@ chart:
 		chart="$$tmp/$(UPSTREAM_CHARTS)/$$name"; \
 		UPSTREAM_VERSION="$(VERSION)" CHART_NAME="$$name" yq -e \
 			'.name == strenv(CHART_NAME) and .appVersion == strenv(UPSTREAM_VERSION)' "$$chart/Chart.yaml" >/dev/null; \
-		CHART_VERSION="$(CHART_VERSION)" yq -i '.version = strenv(CHART_VERSION) | \
-			.annotations."dynamia.ai/redistribution-changes" = "Dynamia normalized the version for OCI packaging."' "$$chart/Chart.yaml"; \
+		CHART_VERSION="$(CHART_VERSION)" yq -i '$(CHART_METADATA)' "$$chart/Chart.yaml"; \
 		key=hcuDevicePlugin; \
 		if [ "$$name" = k8s-hcu-plugin-mig ]; then key=hcuDevicePluginMig; fi; \
-		CHART_VALUES_KEY="$$key" yq -i '.[strenv(CHART_VALUES_KEY)].hcuDpCntr.image.repository = "ghcr.io/dynamia-ai/hygon/hcu-device-plugin" | \
-			.[strenv(CHART_VALUES_KEY)].nodeSelector."kubernetes.io/arch" = "amd64" | .imagePullSecrets = [] | \
-			(head_comment) as $$existing | . head_comment = ($$existing + "\nDynamia adapted the packaged defaults.")' "$$chart/values.yaml"; \
+		CHART_VALUES_KEY="$$key" yq -i '$(CHART_DEFAULTS)' "$$chart/values.yaml"; \
 		cp LICENSE "$$chart/"; \
 		helm lint --strict "$$chart"; \
 		helm template "$$name" "$$chart" > "$$tmp/rendered.yaml"; \
-		IMAGE_TAG="$(VERSION)" yq eval-all -e 'select(.kind == "DaemonSet") | .spec.template.spec | \
-			[(.nodeSelector."kubernetes.io/arch" == "amd64"), \
-			(.containers[0].image == ("ghcr.io/dynamia-ai/hygon/hcu-device-plugin:" + strenv(IMAGE_TAG)))] | all' "$$tmp/rendered.yaml" >/dev/null; \
+		IMAGE_TAG="$(VERSION)" yq eval-all -e '$(CHECK_RENDER)' "$$tmp/rendered.yaml" >/dev/null; \
 		if [ "$$name" = k8s-hcu-plugin-hami ]; then \
-			yq eval-all -e 'select(.kind == "ClusterRole") | .rules | \
-				[(map(select(.resources[] == "pods")) | .[0].verbs | contains(["delete"])), \
-				(map(select(.resources[] == "configmaps")) | .[0].verbs | contains(["get", "create", "patch"]))] | all' \
-				"$$tmp/rendered.yaml" >/dev/null; \
+			yq eval-all -e '$(CHECK_HAMI_RBAC)' "$$tmp/rendered.yaml" >/dev/null; \
 		fi; \
 		mkdir -p "$(OUT)/$$name"; \
 		helm package "$$chart" --destination "$(OUT)/$$name"; \
